@@ -42,13 +42,21 @@ export const userModel = {
     return result.insertId
   },
 
-  async updateProfile(id, { nombre, apellidos, telefono }, conn) {
-    await query('UPDATE usuarios SET nombre = ?, apellidos = ?, telefono = ? WHERE id_usuario = ?', [
-      nombre,
-      apellidos,
-      telefono,
-      id,
-    ], conn)
+  async updateProfile(id, { nombre, apellidos, telefono, correo, emailChanged = false }, conn) {
+    if (emailChanged && correo) {
+      await query(
+        'UPDATE usuarios SET nombre = ?, apellidos = ?, telefono = ?, correo = ?, token_version = token_version + 1 WHERE id_usuario = ?',
+        [nombre, apellidos, telefono, correo, id],
+        conn,
+      )
+    } else {
+      await query('UPDATE usuarios SET nombre = ?, apellidos = ?, telefono = ? WHERE id_usuario = ?', [
+        nombre,
+        apellidos,
+        telefono,
+        id,
+      ], conn)
+    }
     return this.findById(id, conn)
   },
 

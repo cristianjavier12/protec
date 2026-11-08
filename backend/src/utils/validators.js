@@ -97,15 +97,22 @@ export function validateLoginInput(body = {}) {
 
 export function validateProfileInput(body = {}) {
   const errors = {}
+  const correoRaw = body.correo ?? body.email
   const data = {
     nombre: str(body.nombre),
     apellidos: str(body.apellidos),
     telefono: str(body.telefono),
+    correo: correoRaw !== undefined ? normalizeEmail(correoRaw) : undefined,
+    passwordActual: typeof body.passwordActual === 'string' ? body.passwordActual : typeof body.password === 'string' ? body.password : '',
   }
   validateName(data.nombre, 'nombre', 80, errors, 'nombre')
   validateName(data.apellidos, 'apellidos', 120, errors, 'apellidos')
   if (!data.telefono) errors.telefono = 'Ingresa tu teléfono.'
   else if (!isPhone(data.telefono)) errors.telefono = 'Ingresa un teléfono válido (8 a 18 dígitos).'
+  if (data.correo !== undefined) {
+    if (!data.correo) errors.correo = 'Ingresa tu correo electrónico.'
+    else if (!isEmail(data.correo)) errors.correo = 'Ingresa un correo válido.'
+  }
   return { data, errors: hasErrors(errors) ? errors : null }
 }
 

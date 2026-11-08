@@ -14,12 +14,16 @@ export async function getMe(req, res) {
   res.json({ user, stats })
 }
 
-/** PUT /api/users/me — solo nombre, apellidos y teléfono (el correo no se modifica). */
+/** PUT /api/users/me — actualiza nombre, apellidos, teléfono y (confirmando con la contraseña actual) correo. */
 export async function updateMe(req, res) {
   const { data, errors } = validateProfileInput(req.body)
   if (errors) throw AppError.validation(errors)
-  const user = await authService.updateProfile(req.user.id, data)
-  res.json({ message: 'Tus datos se actualizaron correctamente.', user })
+  const { user, token, emailChanged } = await authService.updateProfile(req.user.id, data)
+  res.json({
+    message: emailChanged ? 'Tu perfil y tu correo electrónico se actualizaron correctamente.' : 'Tus datos se actualizaron correctamente.',
+    user,
+    ...(token ? { token } : {}),
+  })
 }
 
 /** GET /api/devices — dispositivos registrados por el usuario */

@@ -6,6 +6,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock,
+  Lock,
   LogOut,
   Mail,
   Package,
@@ -27,7 +28,7 @@ import { useToast } from '../context/ToastContext'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { userService } from '../services/index'
 import { formatDate } from '../utils/format'
-import { isPhone } from '../utils/validators'
+import { isEmail, isPhone } from '../utils/validators'
 import { ROUTES } from '../utils/routes'
 import { getDeviceMeta } from '../utils/repairs'
 import { cn } from '../utils/cn'
@@ -60,12 +61,18 @@ function StatCard({ icon: Icon, label, value, tone }) {
   )
 }
 
-function validateProfile(form) {
+function validateProfile(form, currentEmail = '') {
   const errors = {}
   if (form.nombre.trim().length < 2) errors.nombre = 'Ingresa tu nombre (mínimo 2 caracteres).'
   if (form.apellidos.trim().length < 2) errors.apellidos = 'Ingresa tus apellidos (mínimo 2 caracteres).'
   if (!form.telefono.trim()) errors.telefono = 'Ingresa tu teléfono.'
   else if (!isPhone(form.telefono)) errors.telefono = 'Ingresa un teléfono válido.'
+  const nextEmail = form.correo.trim().toLowerCase()
+  if (!nextEmail) errors.correo = 'Ingresa tu correo electrónico.'
+  else if (!isEmail(nextEmail)) errors.correo = 'Ingresa un correo electrónico válido.'
+  else if (nextEmail !== (currentEmail || '').trim().toLowerCase() && !form.passwordActual) {
+    errors.passwordActual = 'Ingresa tu contraseña actual para modificar tu correo.'
+  }
   return errors
 }
 
@@ -74,7 +81,7 @@ function validateProfile(form) {
  */
 export default function MyAccountPage() {
   usePageTitle('Mi cuenta')
-  const { updateUser, logout } = useAuth()
+  const { updateUser, setSession, logout } = useAuth()
   const { notify } = useToast()
 
   const [profile, setProfile] = useState(null)
@@ -83,10 +90,20 @@ export default function MyAccountPage() {
   const [status, setStatus] = useState('loading') // loading | ready | error
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ nombre: '', apellidos: '', telefono: '' })
+  const [form, setForm] = useState({ nombre: '', apellidos: '', telefono: '', correo: '', passwordActual: '' })
   const [errors, setErrors] = useState({})
 
-  const fillForm = (u) => setForm({ nombre: u?.nombre ?? '', apellidos: u?.apellidos ?? '', telefono: u?.telefono ?? '' })
+  const fillForm = (u) =>
+    setForm({
+      nombre: u?.nombre ?? '',
+      apellidos: u?.apellidos ?? '',
+      telefono: u?.telefono ?? '',
+      correo: u?.correo ?? '',
+      passwordActual: '',
+    })
+
+  const emailChanged =
+    Boolean(profile) && form.correo.trim().toLowerCase() !== (profile.correo ?? '').trim().toLowerCase()
 
   const load = useCallback(async () => {
     setStatus('loading')
@@ -119,7 +136,7 @@ export default function MyAccountPage() {
 
   const save = async (e) => {
     e.preventDefault()
-    const next = validateProfile(form)
+    const next = validateProfile(form, profile?.correo)
     setErrors(next)
     if (Object.keys(next).length) return
 
@@ -129,9 +146,13 @@ export default function MyAccountPage() {
         nombre: form.nombre.trim(),
         apellidos: form.apellidos.trim(),
         telefono: form.telefono.trim(),
+        correo: form.correo.trim().toLowerCase(),
+        ...(emailChanged || form.passwordActual ? { passwordActual: form.passwordActual } : {}),
       })
       setProfile(res.user)
-      updateUser(res.user)
+      if (res.token) setSession(res.token, res.user)
+      else updateUser(res.user)
+      fillForm(res.user)
       setEditing(false)
       notify({ type: 'success', title: 'Perfil actualizado', description: res.message })
     } catch (err) {
@@ -211,7 +232,35 @@ export default function MyAccountPage() {
                     <TextField label="Nombre" icon={User} value={form.nombre} onChange={update('nombre')} error={errors.nombre} required maxLength={80} />
                     <TextField label="Apellidos" value={form.apellidos} onChange={update('apellidos')} error={errors.apellidos} required maxLength={120} />
                     <TextField label="Teléfono" type="tel" icon={Phone} value={form.telefono} onChange={update('telefono')} error={errors.telefono} required />
-                    <TextField label="Correo electrónico" icon={Mail} value={profile.correo} disabled hint="El correo no se puede modificar." />
+                    <TextField
+                      label="Correo electrónico"
+                      type="email"
+                      icon={Mail}
+                      value={form.correo}
+                      onChange={update('correo')}
+                      error={errors.correo}
+                      required
+                      maxLength={160}
+                      hint="Si modificas tu correo, confirma el cambio con tu contraseña actual."
+                    />
+                    <div className="sm:col-span-2">
+                      <TextField
+                        label="Contraseña actual (para modificar tu correo)"
+                        type="password"
+                        icon={Lock}
+                        value={form.passwordActual}
+                        onChange={update('passwordActual')}
+                        error={errors.passwordActual}
+                        required={emailChanged}
+                        autoComplete="current-password"
+                        placeholder="Escribe tu contraseña actual para confirmar el cambio de correo"
+                        hint={
+                          emailChanged
+                            ? 'Has modificado tu correo electrónico: ingresa tu contraseña actual para guardar el cambio.'
+                            : 'Solo es necesario llenarla cuando cambias tu correo electrónico.'
+                        }
+                      />
+                    </div>
                     <div className="flex flex-col-reverse gap-3 border-t border-line pt-5 sm:col-span-2 sm:flex-row sm:justify-end">
                       <Button type="button" variant="secondary" onClick={cancel} disabled={saving}>
                         Cancelar

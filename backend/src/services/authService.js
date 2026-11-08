@@ -101,8 +101,40 @@ export const authService = {
   },
 
   async updateProfile(userId, data) {
-    const row = await userModel.updateProfile(userId, data)
-    return serializeUser(row)
+    const current = await userModel.findByIdWithPassword(userId)
+    if (!current) throw AppError.notFound('No encontramos tu cuenta.')
+
+    const nextEmail = data.correo !== undefined ? normalizeEmail(data.correo) : normalizeEmail(current.correo)
+    const emailChanged = nextEmail !== normalizeEmail(current.correo)
+
+    if (emailChanged) {
+      if (!data.passwordActual) {
+        throw AppError.validation(
+          { passwordActual: 'Ingresa tu contraseña actual para modificar tu correo.' },
+          'Ingresa tu contraseña actual para modificar tu correo.',
+        )
+      }
+      const ok = await bcrypt.compare(data.passwordActual, current.password_hash)
+      if (!ok) {
+        throw AppError.validation(
+          { passwordActual: 'La contraseña actual no es correcta.' },
+          'La contraseña actual no es correcta.',
+        )
+      }
+      const existing = await userModel.findByEmail(nextEmail)
+      if (existing && existing.id_usuario !== userId) {
+        throw AppError.conflict('Ya existe una cuenta registrada con este correo.', {
+          correo: 'Ya existe una cuenta registrada con este correo.',
+        })
+      }
+    }
+
+    const row = await userModel.updateProfile(userId, { ...data, correo: nextEmail, emailChanged })
+    return {
+      user: serializeUser(row),
+      token: emailChanged ? signSessionToken(row) : undefined,
+      emailChanged,
+    }
   },
 
   /**
