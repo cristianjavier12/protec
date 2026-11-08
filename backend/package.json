@@ -1,0 +1,43 @@
+{
+  "name": "protec-backend",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "API de PROTEC (Node.js + Express + MySQL).",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "start:prod": "node scripts/initDb.js && node scripts/createAdmin.js --if-configured && node server.js",
+    "admin:create": "node scripts/createAdmin.js",
+    "db:init": "node scripts/initDb.js",
+    "db:reset": "node scripts/initDb.js --reset",
+    "db:seed": "node scripts/seed.js",
+    "test:flow": "node scripts/smokeTest.js",
+    "test:prompt3": "node scripts/testPrompt3.js",
+    "test:accounts": "node scripts/testAccounts.js",
+    "test": "node scripts/smokeTest.js && node scripts/testPrompt3.js && node scripts/testAccounts.js"
+  },
+  "engines": {
+    "node": ">=18.18"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cloudinary": "^2.11.0",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.9",
+    "express": "^4.22.3",
+    "express-rate-limit": "^8.7.1",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.12.1",
+    "multer": "^2.5.0",
+    "mysql2": "^3.24.6",
+    "nodemailer": "^10.4.0",
+    "socket.io": "^4.8.4",
+    "stripe": "^23.1.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
+  }
+}
