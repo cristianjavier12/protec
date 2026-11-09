@@ -1,0 +1,14 @@
+{
+  "name": "protec",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plataforma web PROTEC",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "npm --prefix backend ci --omit=dev",
+    "start": "npm --prefix backend run start:prod",
+    "start:prod": "npm --prefix backend run start:prod"
+  }
+}

@@ -19,7 +19,7 @@
     "test": "node scripts/smokeTest.js && node scripts/testPrompt3.js && node scripts/testAccounts.js"
   },
   "engines": {
-    "node": ">=18.18"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
