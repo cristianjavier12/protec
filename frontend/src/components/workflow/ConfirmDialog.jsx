@@ -6,18 +6,24 @@ import { cn } from '../../utils/cn'
 /** Ventana modal accesible (Escape para cerrar, foco inicial dentro del diálogo). */
 export function Modal({ open, title, description, onClose, children, size = 'md' }) {
   const ref = useRef(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useEffect(() => {
     if (!open) return undefined
-    const onKey = (e) => e.key === 'Escape' && onClose?.()
+    const onKey = (e) => e.key === 'Escape' && onCloseRef.current?.()
     document.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    ref.current?.querySelector('input, select, textarea, button')?.focus()
+    const firstField =
+      ref.current?.querySelector('input:not([disabled]), select:not([disabled]), textarea:not([disabled])') ||
+      ref.current?.querySelector('button:not([disabled])')
+    firstField?.focus()
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
   return (
