@@ -127,6 +127,13 @@ async function send({ to, subject, html, text, devLink }) {
 
 export const mailService = {
   async verify() {
+    if (brevoApiKey) {
+      const res = await fetch('https://api.brevo.com/v3/account', {
+        headers: { accept: 'application/json', 'api-key': brevoApiKey },
+        signal: AbortSignal.timeout(5000),
+      })
+      return res.ok
+    }
     if (!transporter) return false
     return transporter.verify()
   },
