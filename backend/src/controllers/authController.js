@@ -42,11 +42,11 @@ export async function me(req, res) {
   res.json({ user })
 }
 
-/** POST /api/auth/forgot-password — respuesta idéntica exista o no la cuenta. */
+/** POST /api/auth/forgot-password */
 export async function forgotPassword(req, res) {
   await authService.requestPasswordReset(req.body?.correo ?? req.body?.email)
   res.json({
-    message: 'Si el correo está registrado, te enviamos un enlace para restablecer tu contraseña. Revisa también tu carpeta de spam.',
+    message: 'Te enviamos un enlace a tu correo electrónico para restablecer tu contraseña. Revisa también tu carpeta de spam.',
   })
 }
 

@@ -125,6 +125,8 @@ export const adminService = {
       await query('DELETE n FROM notificaciones n JOIN solicitudes s ON s.id_solicitud = n.id_solicitud WHERE s.id_usuario = ?', [target.id_usuario], conn)
       const result = await query('DELETE FROM solicitudes WHERE id_usuario = ?', [target.id_usuario], conn)
       removedRepairs = result.affectedRows
+      await query('DELETE FROM password_resets WHERE id_usuario = ?', [target.id_usuario], conn)
+      await query('DELETE FROM verificaciones_correo WHERE id_usuario = ?', [target.id_usuario], conn)
       await userModel.remove(target.id_usuario, conn)
     })
 
@@ -171,6 +173,8 @@ export const adminService = {
       await query('DELETE n FROM notificaciones n JOIN solicitudes s ON s.id_solicitud = n.id_solicitud WHERE s.id_usuario = ?', [target.id_usuario], conn)
       const result = await query('DELETE FROM solicitudes WHERE id_usuario = ?', [target.id_usuario], conn)
       removedRepairs = result.affectedRows
+      await query('DELETE FROM password_resets WHERE id_usuario = ?', [target.id_usuario], conn)
+      await query('DELETE FROM verificaciones_correo WHERE id_usuario = ?', [target.id_usuario], conn)
       await userModel.remove(target.id_usuario, conn)
     })
 

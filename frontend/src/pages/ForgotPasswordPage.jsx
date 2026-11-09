@@ -29,7 +29,11 @@ export default function ForgotPasswordPage() {
       const res = await authService.forgotPassword(email.trim().toLowerCase())
       setSent(res.message)
     } catch (err) {
-      setServerError(err?.status === 429 ? err.message : err?.message || 'No pudimos procesar la solicitud. Inténtalo de nuevo.')
+      if (err?.status === 404) {
+        setError(err.message || 'No encontramos ninguna cuenta registrada con ese correo electrónico.')
+      } else {
+        setServerError(err?.status === 429 ? err.message : err?.message || 'No pudimos procesar la solicitud. Inténtalo de nuevo.')
+      }
     } finally {
       setLoading(false)
     }

@@ -62,12 +62,15 @@ export const authService = {
     return mailService.sendEmailVerification({ to: user.correo, nombre: user.nombre, url, hours: env.verifyTokenHours })
   },
 
-  /** Reenvío del enlace de verificación. Respuesta idéntica exista o no la cuenta. */
+  /** Reenvío del enlace de verificación si la cuenta existe y aún no está confirmada. */
   async resendVerification(rawEmail) {
     const correo = normalizeEmail(rawEmail)
     if (!isEmail(correo)) throw AppError.validation({ correo: 'Ingresa un correo válido.' })
     const user = await userModel.findByEmail(correo)
-    if (!user || user.correo_verificado || !user.estado) return
+    if (!user || !user.estado) {
+      throw AppError.notFound('No encontramos ninguna cuenta registrada con ese correo electrónico.')
+    }
+    if (user.correo_verificado) return
     if ((await emailVerificationModel.countRecent(user.id_usuario)) >= MAX_RESETS_PER_HOUR) return
     await this.sendVerification(user)
   },
@@ -161,16 +164,20 @@ export const authService = {
   },
 
   /**
-   * Solicitud de recuperación. Siempre responde igual exista o no la cuenta
-   * (no revela qué correos están registrados). El enlace vence en RESET_TOKEN_MINUTES.
+   * Solicitud de recuperación. Verifica que exista una cuenta activa con ese correo
+   * antes de generar y enviar el enlace (que vence en RESET_TOKEN_MINUTES).
    */
   async requestPasswordReset(rawEmail) {
     const correo = normalizeEmail(rawEmail)
     if (!isEmail(correo)) throw AppError.validation({ correo: 'Ingresa un correo válido.' })
 
     const user = await userModel.findByEmail(correo)
-    if (!user || !user.estado) return
-    if ((await passwordResetModel.countRecent(user.id_usuario)) >= MAX_RESETS_PER_HOUR) return
+    if (!user || !user.estado) {
+      throw AppError.notFound('No encontramos ninguna cuenta registrada con ese correo electrónico.')
+    }
+    if ((await passwordResetModel.countRecent(user.id_usuario)) >= MAX_RESETS_PER_HOUR) {
+      throw AppError.tooMany('Ya solicitaste varios enlaces recientemente. Espera unos minutos antes de intentarlo de nuevo.')
+    }
 
     const token = crypto.randomBytes(32).toString('hex')
     await withTransaction(async (conn) => {
