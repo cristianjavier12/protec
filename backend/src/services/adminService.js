@@ -104,18 +104,17 @@ export const adminService = {
    * Elimina una cuenta.
    *  - Cliente: se eliminan también sus solicitudes (con fotografías, pagos, chat e historial).
    *  - Técnico: solo si no tiene solicitudes activas; sus trabajos terminados conservan el historial.
-   *  - Administrador: nunca la propia ni la última cuenta de administrador.
+   *  - Administrador: siempre debe quedar al menos una cuenta de administrador activa.
    */
   async deleteUser(admin, userId) {
     const target = await userModel.findById(Number(userId))
     if (!target) throw AppError.notFound('No encontramos esa cuenta.')
-    if (target.id_usuario === admin.id) throw AppError.conflict('No puedes eliminar tu propia cuenta.')
 
     let publicIds = []
     let removedRepairs = 0
     await withTransaction(async (conn) => {
       if (target.rol === ROLES.ADMIN && (await userModel.countAdmins(conn)) <= 1) {
-        throw AppError.conflict('Debe existir al menos un administrador activo.')
+        throw AppError.conflict('Debe quedar al menos una cuenta de administrador activa.')
       }
       if (target.rol === ROLES.TECHNICIAN) {
         const active = await activeAssignedCount(target.id_usuario, conn)
@@ -132,6 +131,52 @@ export const adminService = {
     await purgeEvidenceFiles(publicIds)
     emitToUsers([target.id_usuario], 'session:revoked', { reason: 'deleted' })
     console.log(`[admin] ${admin.correo} eliminó la cuenta ${target.correo} (${target.rol}) y ${removedRepairs} solicitud(es).`)
+    return { removedRepairs, selfDeleted: target.id_usuario === admin.id }
+  },
+
+  /**
+   * Permite al propio titular eliminar su cuenta desde Mi cuenta confirmando con su contraseña.
+   * Si es administrador, verifica que quede al menos una cuenta de administrador activa.
+   */
+  async deleteOwnAccount(userId, rawPassword) {
+    const password = typeof rawPassword === 'string' ? rawPassword : ''
+    if (!password) {
+      throw AppError.validation(
+        { password: 'Ingresa tu contraseña actual para confirmar la eliminación de tu cuenta.' },
+        'Ingresa tu contraseña actual.',
+      )
+    }
+    const target = await userModel.findByIdWithPassword(Number(userId))
+    if (!target) throw AppError.notFound('No encontramos tu cuenta.')
+    const ok = await bcrypt.compare(password, target.password_hash)
+    if (!ok) {
+      throw AppError.validation({ password: 'La contraseña actual no es correcta.' }, 'La contraseña actual no es correcta.')
+    }
+
+    let publicIds = []
+    let removedRepairs = 0
+    await withTransaction(async (conn) => {
+      if (target.rol === ROLES.ADMIN && (await userModel.countAdmins(conn)) <= 1) {
+        throw AppError.conflict('No puedes eliminar tu cuenta porque debe quedar al menos una cuenta de administrador activa.')
+      }
+      if (target.rol === ROLES.TECHNICIAN) {
+        const active = await activeAssignedCount(target.id_usuario, conn)
+        if (active) {
+          throw AppError.conflict(
+            `Tienes ${active} solicitud(es) de reparación activa(s) asignada(s). Pide a administración que las reasigne antes de eliminar tu cuenta.`,
+          )
+        }
+      }
+      publicIds = await evidenceIdsFor('s.id_usuario = ?', [target.id_usuario], conn)
+      await query('DELETE n FROM notificaciones n JOIN solicitudes s ON s.id_solicitud = n.id_solicitud WHERE s.id_usuario = ?', [target.id_usuario], conn)
+      const result = await query('DELETE FROM solicitudes WHERE id_usuario = ?', [target.id_usuario], conn)
+      removedRepairs = result.affectedRows
+      await userModel.remove(target.id_usuario, conn)
+    })
+
+    await purgeEvidenceFiles(publicIds)
+    emitToUsers([target.id_usuario], 'session:revoked', { reason: 'deleted' })
+    console.log(`[account] ${target.correo} (${target.rol}) eliminó su propia cuenta y ${removedRepairs} solicitud(es).`)
     return { removedRepairs }
   },
 

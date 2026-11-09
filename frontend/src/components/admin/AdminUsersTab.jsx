@@ -216,7 +216,7 @@ function ChangeRoleModal({ target, onClose, onChanged }) {
 
 /** Pestaña "Usuarios" del panel administrativo. */
 export default function AdminUsersTab() {
-  const { user: me } = useAuth()
+  const { user: me, logout } = useAuth()
   const { notify } = useToast()
   const [items, setItems] = useState([])
   const [state, setState] = useState('loading')
@@ -240,6 +240,8 @@ export default function AdminUsersTab() {
     load()
   }, [load])
 
+  const adminCount = useMemo(() => items.filter((u) => u.rol === 'admin').length, [items])
+
   const filtered = useMemo(
     () => items.filter((u) => (!roleFilter || u.rol === roleFilter) && `${u.nombre} ${u.correo}`.toLowerCase().includes(q.trim().toLowerCase())),
     [items, q, roleFilter],
@@ -248,10 +250,12 @@ export default function AdminUsersTab() {
   const confirmDelete = async () => {
     setDeleting(true)
     try {
-      const res = await adminService.deleteUser(deleteTarget.id)
+      const targetId = deleteTarget.id
+      const res = await adminService.deleteUser(targetId)
       notify({ type: 'success', title: 'Cuenta eliminada', description: res.removedRepairs ? `También se eliminaron ${res.removedRepairs} solicitud(es).` : deleteTarget.correo })
-      setItems((list) => list.filter((u) => u.id !== deleteTarget.id))
+      setItems((list) => list.filter((u) => u.id !== targetId))
       setDeleteTarget(null)
+      if (targetId === me?.id || res.selfDeleted) logout()
     } catch (err) {
       notify({ type: 'warning', title: 'No se pudo eliminar', description: err?.message })
     } finally {
@@ -329,6 +333,13 @@ export default function AdminUsersTab() {
                 {filtered.map((u) => {
                   const isMe = u.id === me?.id
                   const busyTech = u.rol === 'tecnico' && u.asignadasActivas > 0
+                  const isLastAdmin = u.rol === 'admin' && adminCount <= 1
+                  const deleteDisabled = busyTech || isLastAdmin
+                  const deleteTitle = isLastAdmin
+                    ? 'Debe quedar por lo menos una cuenta de administrador'
+                    : busyTech
+                      ? 'Reasigna sus solicitudes activas antes de eliminarlo'
+                      : 'Eliminar cuenta'
                   return (
                     <tr key={u.id} className="hover:bg-surface/60">
                       <td className="px-4 py-3">
@@ -350,25 +361,31 @@ export default function AdminUsersTab() {
                       </td>
                       <td className="px-4 py-3 text-muted">{formatDate(u.fechaRegistro)}</td>
                       <td className="px-4 py-3">
-                        {isMe ? (
-                          <p className="text-right text-xs text-muted">Tu cuenta</p>
-                        ) : (
-                          <div className="flex justify-end gap-2">
-                            <Button size="sm" variant="secondary" className="h-9 px-3" leadingIcon={UserCog} onClick={() => setRoleTarget(u)}>
+                        <div className="flex items-center justify-end gap-2">
+                          {!isMe && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="h-9 px-3"
+                              leadingIcon={UserCog}
+                              disabled={isLastAdmin}
+                              title={isLastAdmin ? 'Debe quedar por lo menos una cuenta de administrador' : undefined}
+                              onClick={() => setRoleTarget(u)}
+                            >
                               {u.rol === 'usuario' ? 'Convertir en técnico' : 'Cambiar tipo'}
                             </Button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteTarget(u)}
-                              disabled={busyTech}
-                              title={busyTech ? 'Reasigna sus solicitudes activas antes de eliminarlo' : 'Eliminar cuenta'}
-                              className="grid size-9 place-items-center rounded-xl border border-line text-muted transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 disabled:hover:bg-transparent"
-                              aria-label={`Eliminar la cuenta de ${u.nombre}`}
-                            >
-                              <Trash2 className="size-4" />
-                            </button>
-                          </div>
-                        )}
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(u)}
+                            disabled={deleteDisabled}
+                            title={deleteTitle}
+                            className="grid size-9 place-items-center rounded-xl border border-line text-muted transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 disabled:hover:bg-transparent"
+                            aria-label={`Eliminar la cuenta de ${u.nombre}`}
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )

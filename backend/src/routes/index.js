@@ -31,6 +31,7 @@ router.post('/auth/reset-password', passwordLimiter, h(auth.resetPassword))
 router.get('/users/me', authenticateToken, h(users.getMe))
 router.put('/users/me', authenticateToken, h(users.updateMe))
 router.put('/users/me/password', authenticateToken, passwordLimiter, h(users.changePassword))
+router.delete('/users/me', authenticateToken, passwordLimiter, h(users.deleteMe))
 router.get('/devices', authenticateToken, h(users.listMyDevices))
 
 /* ---------- Dashboard del usuario ---------- */

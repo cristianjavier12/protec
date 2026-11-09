@@ -23,6 +23,7 @@ export const userService = {
   listDevices: () => api.get('/devices'),
   getDashboard: () => api.get('/users/dashboard'),
   changePassword: (payload) => api.put('/users/me/password', payload),
+  deleteAccount: (password) => api.delete('/users/me', { body: { password } }),
 }
 
 /* ---------- Solicitudes de reparación ---------- */

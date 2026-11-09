@@ -1,4 +1,5 @@
 import { deviceModel } from '../models/deviceModel.js'
+import { adminService } from '../services/adminService.js'
 import { authService } from '../services/authService.js'
 import { repairService } from '../services/repairService.js'
 import { AppError } from '../utils/AppError.js'
@@ -38,4 +39,10 @@ export async function changePassword(req, res) {
   if (errors) throw AppError.validation(errors)
   const { token, user } = await authService.changePassword(req.user.id, data)
   res.json({ message: 'Tu contraseña se actualizó. Cerramos las sesiones abiertas en otros dispositivos.', token, user })
+}
+
+/** DELETE /api/users/me — elimina la propia cuenta confirmando con la contraseña actual. */
+export async function deleteMe(req, res) {
+  await adminService.deleteOwnAccount(req.user.id, req.body?.password)
+  res.json({ message: 'Tu cuenta ha sido eliminada correctamente.' })
 }

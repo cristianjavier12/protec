@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
   ArrowRight,
@@ -14,6 +14,7 @@ import {
   Phone,
   RefreshCw,
   Shield,
+  Trash2,
   User,
   UserRound,
   Wrench,
@@ -23,6 +24,7 @@ import Eyebrow from '../components/ui/Eyebrow'
 import Button from '../components/ui/Button'
 import { TextField } from '../components/ui/FormFields'
 import ChangePasswordCard from '../components/auth/ChangePasswordCard'
+import { Modal } from '../components/workflow/ConfirmDialog'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -83,6 +85,7 @@ export default function MyAccountPage() {
   usePageTitle('Mi cuenta')
   const { updateUser, setSession, logout } = useAuth()
   const { notify } = useToast()
+  const navigate = useNavigate()
 
   const [profile, setProfile] = useState(null)
   const [stats, setStats] = useState({ total: 0, activas: 0, terminadas: 0 })
@@ -92,6 +95,10 @@ export default function MyAccountPage() {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ nombre: '', apellidos: '', telefono: '', correo: '', passwordActual: '' })
   const [errors, setErrors] = useState({})
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteError, setDeleteError] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   const fillForm = (u) =>
     setForm({
@@ -166,6 +173,33 @@ export default function MyAccountPage() {
 
   const initials = `${profile?.nombre?.[0] ?? ''}${profile?.apellidos?.[0] ?? ''}`.toUpperCase() || 'U'
   const fullName = [profile?.nombre, profile?.apellidos].filter(Boolean).join(' ')
+
+  const closeDeleteModal = () => {
+    if (deleting) return
+    setDeleteOpen(false)
+    setDeletePassword('')
+    setDeleteError('')
+  }
+
+  const handleDeleteAccount = async (e) => {
+    e.preventDefault()
+    if (!deletePassword) {
+      setDeleteError('Ingresa tu contraseña actual para confirmar.')
+      return
+    }
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      const res = await userService.deleteAccount(deletePassword)
+      notify({ type: 'success', title: 'Cuenta eliminada', description: res.message || 'Tu cuenta se eliminó correctamente.' })
+      logout()
+      navigate(ROUTES.HOME, { replace: true })
+    } catch (err) {
+      setDeleteError(err?.data?.errors?.password || err?.message || 'No se pudo eliminar tu cuenta.')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <section className="relative min-h-[80vh] overflow-hidden bg-surface pt-28 pb-20 sm:pt-32">
@@ -276,6 +310,34 @@ export default function MyAccountPage() {
               {/* Seguridad */}
               <ChangePasswordCard />
 
+              {/* Eliminar cuenta */}
+              <div className="rounded-3xl border border-red-200/80 bg-white p-6 shadow-soft sm:p-8">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-600">
+                      <Trash2 className="size-5" aria-hidden />
+                    </span>
+                    <div>
+                      <p className="text-lg font-bold text-ink">Eliminar cuenta</p>
+                      <p className="text-sm text-muted">
+                        {profile.rol === 'admin'
+                          ? 'Puedes eliminar tu cuenta si existe al menos otro administrador activo.'
+                          : 'Borra de forma permanente tu cuenta y tus solicitudes de reparación.'}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leadingIcon={Trash2}
+                    className="border-red-200 text-red-600 hover:bg-red-50"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    Eliminar mi cuenta
+                  </Button>
+                </div>
+              </div>
+
               {/* Estadísticas */}
               <div className="grid gap-4 sm:grid-cols-3">
                 <StatCard icon={Wrench} label="Solicitudes" value={stats.total} tone="bg-electric/10 text-electric" />
@@ -339,6 +401,47 @@ export default function MyAccountPage() {
                   <LogOut className="size-4" aria-hidden /> Cerrar sesión
                 </button>
               </div>
+
+              <Modal
+                open={deleteOpen}
+                onClose={closeDeleteModal}
+                title="Eliminar mi cuenta"
+                description="Esta acción es permanente y no se puede deshacer."
+              >
+                <form onSubmit={handleDeleteAccount} noValidate className="flex flex-col gap-4">
+                  <p className="text-sm text-muted">
+                    Se eliminarán tu cuenta (<strong className="text-ink">{profile.correo}</strong>) y tus solicitudes de reparación registradas.
+                    {profile.rol === 'admin' && ' Recuerda que en el sistema debe quedar por lo menos una cuenta de administrador activa.'}
+                  </p>
+                  <TextField
+                    label="Confirma con tu contraseña actual"
+                    type="password"
+                    icon={Lock}
+                    value={deletePassword}
+                    onChange={(e) => {
+                      setDeletePassword(e.target.value)
+                      if (deleteError) setDeleteError('')
+                    }}
+                    error={deleteError}
+                    required
+                    autoComplete="current-password"
+                    placeholder="Escribe tu contraseña actual"
+                  />
+                  <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+                    <Button type="button" variant="secondary" onClick={closeDeleteModal} disabled={deleting}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="submit"
+                      loading={deleting}
+                      leadingIcon={Trash2}
+                      className="bg-red-600 text-white shadow-none hover:bg-red-700"
+                    >
+                      Sí, eliminar mi cuenta
+                    </Button>
+                  </div>
+                </form>
+              </Modal>
             </div>
           )}
         </div>
