@@ -38,8 +38,16 @@ export const authService = {
       aceptoTerminos: true,
     })
     const user = await userModel.findById(id)
-    if (emailVerificationEnabled) await this.sendVerification(user)
-    return { user: serializeUser(user), verificationRequired: emailVerificationEnabled }
+    let verificationRequired = emailVerificationEnabled
+    if (emailVerificationEnabled) {
+      const sent = await this.sendVerification(user)
+      if (!sent) {
+        await userModel.markEmailVerified(id)
+        user.correo_verificado = 1
+        verificationRequired = false
+      }
+    }
+    return { user: serializeUser(user), verificationRequired }
   },
 
   /** Envía (o reenvía) el enlace para confirmar el correo. */
@@ -51,7 +59,7 @@ export const authService = {
     })
     emailVerificationModel.purgeExpired().catch(() => {})
     const url = `${env.frontendUrl}/verificar-correo?token=${token}`
-    await mailService.sendEmailVerification({ to: user.correo, nombre: user.nombre, url, hours: env.verifyTokenHours })
+    return mailService.sendEmailVerification({ to: user.correo, nombre: user.nombre, url, hours: env.verifyTokenHours })
   },
 
   /** Reenvío del enlace de verificación. Respuesta idéntica exista o no la cuenta. */

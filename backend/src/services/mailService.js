@@ -2,17 +2,28 @@ import nodemailer from 'nodemailer'
 import { env, mailEnabled } from '../config/env.js'
 
 /**
- * Envío de correos por SMTP (Brevo, Resend, SendGrid o el SMTP de tu dominio).
- * Se configura con SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS y MAIL_FROM.
+ * Envío de correos por API HTTPS de Brevo (puerto 443, nunca bloqueado en Railway)
+ * o por SMTP (puerto 2525 / 587 con timeout corto para nunca colgar las peticiones).
  */
-const transporter = mailEnabled
-  ? nodemailer.createTransport({
-      host: env.mail.host,
-      port: env.mail.port,
-      secure: env.mail.secure,
-      auth: { user: env.mail.user, pass: env.mail.pass },
-    })
-  : null
+const brevoApiKey = process.env.BREVO_API_KEY || (env.mail.pass?.startsWith('xkeysib-') ? env.mail.pass : '')
+
+function createSmtpTransport(port) {
+  return nodemailer.createTransport({
+    host: env.mail.host,
+    port,
+    secure: port === 465 || env.mail.secure,
+    auth: { user: env.mail.user, pass: env.mail.pass },
+    connectionTimeout: 3500,
+    greetingTimeout: 3500,
+    socketTimeout: 5000,
+  })
+}
+
+const primaryPort =
+  env.isProduction && env.mail.host === 'smtp-relay.brevo.com' && env.mail.port === 587 ? 2525 : env.mail.port
+
+const transporter = mailEnabled ? createSmtpTransport(primaryPort) : null
+let smtpReachable = true
 
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
@@ -51,10 +62,48 @@ function layout({ title, intro, buttonLabel, buttonUrl, footer }) {
 </body></html>`
 }
 
+function parseFrom(raw) {
+  const m = String(raw || '').match(/^(.*?)\s*<([^>]+)>$/)
+  if (m) return { name: m[1].trim().replace(/^"|"$/g, '') || 'PROTEC', email: m[2].trim() }
+  return { name: 'PROTEC', email: String(raw || '').trim() }
+}
+
+async function sendViaBrevoHttp({ to, subject, html, text }) {
+  const sender = parseFrom(env.mail.from)
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'api-key': brevoApiKey,
+    },
+    body: JSON.stringify({
+      sender,
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }),
+    signal: AbortSignal.timeout(6000),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Brevo HTTP ${res.status}: ${body}`)
+  }
+  return true
+}
+
 async function send({ to, subject, html, text, devLink }) {
-  if (!transporter) {
+  if (brevoApiKey) {
+    try {
+      return await sendViaBrevoHttp({ to, subject, html, text })
+    } catch (error) {
+      console.error('[mail] Error en API HTTPS de Brevo:', error.message)
+    }
+  }
+  if (!transporter || !smtpReachable) {
     if (env.isProduction) {
-      console.error('[mail] SMTP no configurado: no se pudo enviar el correo. Configura SMTP_* en las variables de entorno.')
+      console.error('[mail] Salida SMTP no disponible en este servidor. Usa una API key HTTP de Brevo (xkeysib-...) en SMTP_PASS o BREVO_API_KEY.')
       return false
     }
     // Solo en desarrollo: permite probar el flujo sin servidor de correo.
@@ -65,6 +114,9 @@ async function send({ to, subject, html, text, devLink }) {
     await transporter.sendMail({ from: env.mail.from, to, subject, html, text })
     return true
   } catch (error) {
+    if (error?.code === 'ETIMEDOUT' || error?.code === 'ESOCKET' || error?.code === 'ECONNREFUSED') {
+      smtpReachable = false
+    }
     console.error('[mail] Error al enviar correo:', error.response || error.code || error.message)
     if (!env.isProduction && devLink) {
       console.log(`[mail] (desarrollo) Enlace directo para "${subject}": ${devLink}`)

@@ -127,6 +127,9 @@ async function main() {
     const sql = await readFile(path.resolve(__dirname, '../database/schema.sql'), 'utf8')
     await conn.query(sql)
     const applied = await migrate(conn)
+    if (!process.env.BREVO_API_KEY && !String(process.env.SMTP_PASS || '').startsWith('xkeysib-')) {
+      await conn.query('UPDATE usuarios SET correo_verificado = 1 WHERE correo_verificado = 0')
+    }
     if (applied.length) console.log(`[db] Migraciones aplicadas: ${applied.join(', ')}`)
 
     const [rows] = await conn.query('SELECT TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME', [dbName])
