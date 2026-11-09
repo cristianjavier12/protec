@@ -167,7 +167,6 @@ export default function Navbar() {
     navigate(ROUTES.HOME)
   }
 
-  const elevated = scrolled || open
   // Con sesión: solo las opciones del rol. Sin sesión: navegación pública.
   const nav = isAuthenticated ? ROLE_NAV[user?.rol] ?? [] : mainNav
 
@@ -178,7 +177,11 @@ export default function Navbar() {
     <header
       className={cn(
         'fixed inset-x-0 top-0 z-50 transition-all duration-300',
-        elevated ? 'glass border-b border-line/70 shadow-[0_6px_24px_-12px_rgb(16_33_58/0.18)]' : 'border-b border-transparent bg-transparent',
+        open
+          ? 'border-b border-line bg-white shadow-[0_12px_32px_-12px_rgb(16_33_58/0.25)]'
+          : scrolled
+            ? 'glass border-b border-line/70 shadow-[0_6px_24px_-12px_rgb(16_33_58/0.18)]'
+            : 'border-b border-transparent bg-transparent',
       )}
     >
       <Container>
@@ -271,13 +274,13 @@ export default function Navbar() {
       <div
         id="mobile-menu"
         className={cn(
-          'overflow-hidden transition-[max-height,opacity] duration-300 ease-out lg:hidden',
-          open ? 'max-h-[calc(100dvh-72px)] opacity-100' : 'pointer-events-none max-h-0 opacity-0',
+          'bg-white overflow-hidden transition-[max-height,opacity] duration-300 ease-out lg:hidden',
+          open ? 'max-h-[calc(100dvh-72px)] border-t border-line opacity-100 shadow-2xl' : 'pointer-events-none max-h-0 opacity-0',
         )}
       >
-        <Container className="max-h-[calc(100dvh-72px)] overflow-y-auto pt-2 pb-6">
+        <Container className="max-h-[calc(100dvh-72px)] overflow-y-auto bg-white pt-3 pb-6">
           {isAuthenticated && (
-            <div className="border-t border-line pt-4">
+            <div className="pt-2">
               <div className="mb-3 flex items-center gap-3 rounded-2xl bg-surface p-3">
                 <span className="grid size-10 place-items-center rounded-full bg-electric text-sm font-bold text-white">
                   {`${user.nombre?.[0] ?? ''}${user.apellidos?.[0] ?? ''}`.toUpperCase()}
@@ -289,10 +292,10 @@ export default function Navbar() {
                   <p className="text-xs text-muted">{ROLE_LABEL[user.rol]}</p>
                 </div>
               </div>
-              <FolioSearch className="mb-2" onDone={() => setOpen(false)} />
+              <FolioSearch className="mb-2 bg-white" onDone={() => setOpen(false)} />
             </div>
           )}
-          <ul className={cn('flex flex-col gap-1', !isAuthenticated && 'border-t border-line pt-4')}>
+          <ul className={cn('flex flex-col gap-1', !isAuthenticated && 'pt-2')}>
             {nav.map((item) => {
               const active = isAuthenticated ? isItemActive(item, nav, location) : location.pathname === item.to
               return (
