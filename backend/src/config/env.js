@@ -40,8 +40,8 @@ function databaseConfig() {
   }
 }
 
-const defaultFrontendUrl = isProduction ? 'https://protec-ten.vercel.app' : 'http://localhost:5173'
-const corsOrigins = (process.env.CORS_ORIGIN || defaultFrontendUrl)
+const defaultFrontendUrl = isProduction ? 'https://www.protecapp.com' : 'http://localhost:5173'
+const corsOrigins = (process.env.CORS_ORIGIN || `${defaultFrontendUrl},https://protecapp.com,https://protec-ten.vercel.app`)
   .split(',')
   .map((o) => trimSlash(o.trim()))
   .filter(Boolean)
@@ -116,11 +116,12 @@ export const mailEnabled = Boolean(env.mail.host && env.mail.user && env.mail.pa
  */
 export const emailVerificationEnabled = process.env.EMAIL_VERIFICATION === 'false' ? false : mailEnabled || !isProduction
 
-/** Permite los orígenes en CORS_ORIGIN y despliegues en Vercel / Netlify. */
+/** Permite los orígenes en CORS_ORIGIN, protecapp.com y despliegues en Vercel / Netlify. */
 export function isAllowedOrigin(origin) {
   if (!origin) return true
   const clean = trimSlash(origin)
   if (env.corsOrigins.includes(clean) || env.corsOrigins.includes('*')) return true
+  if (/^https:\/\/([a-z0-9-]+\.)?protecapp\.com$/i.test(clean)) return true
   if (/^https:\/\/[a-z0-9-]+(\.vercel\.app|\.netlify\.app)$/i.test(clean)) return true
   return false
 }
