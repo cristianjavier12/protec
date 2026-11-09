@@ -40,7 +40,8 @@ function databaseConfig() {
   }
 }
 
-const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+const defaultFrontendUrl = isProduction ? 'https://protec-ten.vercel.app' : 'http://localhost:5173'
+const corsOrigins = (process.env.CORS_ORIGIN || defaultFrontendUrl)
   .split(',')
   .map((o) => trimSlash(o.trim()))
   .filter(Boolean)
@@ -55,7 +56,7 @@ export const env = {
   port: Number(process.env.PORT) || 4000,
   publicUrl: trimSlash(process.env.PUBLIC_URL || defaultPublicUrl),
   /** URL pública del frontend (enlaces de correos y retorno de Stripe). */
-  frontendUrl: trimSlash(process.env.FRONTEND_URL || corsOrigins[0] || 'http://localhost:5173'),
+  frontendUrl: trimSlash(process.env.FRONTEND_URL || corsOrigins[0] || defaultFrontendUrl),
   corsOrigins,
   /** SSL hacia MySQL (requerido por algunos proveedores en la nube). */
   dbSsl: process.env.DB_SSL === 'true',
