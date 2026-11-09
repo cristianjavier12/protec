@@ -1,5 +1,5 @@
 import { Server } from 'socket.io'
-import { env } from '../config/env.js'
+import { isAllowedOrigin } from '../config/env.js'
 import { userModel } from '../models/userModel.js'
 import * as chat from '../services/chatService.js'
 import { findAuthorizedRepair } from '../services/repairService.js'
@@ -13,7 +13,12 @@ import { isTokenCurrent, verifySessionToken } from '../utils/tokens.js'
  */
 export function initSocketIO(httpServer) {
   const io = new Server(httpServer, {
-    cors: { origin: env.corsOrigins, methods: ['GET', 'POST'] },
+    cors: {
+      origin(origin, cb) {
+        cb(null, isAllowedOrigin(origin))
+      },
+      methods: ['GET', 'POST'],
+    },
     maxHttpBufferSize: 16 * 1024,
   })
 

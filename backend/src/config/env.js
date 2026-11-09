@@ -45,11 +45,15 @@ const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .map((o) => trimSlash(o.trim()))
   .filter(Boolean)
 
+const defaultPublicUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : `http://localhost:${process.env.PORT || 4000}`
+
 export const env = {
   isProduction,
   isDevelopment: !isProduction,
   port: Number(process.env.PORT) || 4000,
-  publicUrl: trimSlash(process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`),
+  publicUrl: trimSlash(process.env.PUBLIC_URL || defaultPublicUrl),
   /** URL pública del frontend (enlaces de correos y retorno de Stripe). */
   frontendUrl: trimSlash(process.env.FRONTEND_URL || corsOrigins[0] || 'http://localhost:5173'),
   corsOrigins,
@@ -110,6 +114,15 @@ export const mailEnabled = Boolean(env.mail.host && env.mail.user && env.mail.pa
  * En producción sin SMTP se desactiva para no bloquear el registro (el servidor lo advierte al iniciar).
  */
 export const emailVerificationEnabled = process.env.EMAIL_VERIFICATION === 'false' ? false : mailEnabled || !isProduction
+
+/** Permite los orígenes en CORS_ORIGIN y despliegues en Vercel / Netlify. */
+export function isAllowedOrigin(origin) {
+  if (!origin) return true
+  const clean = trimSlash(origin)
+  if (env.corsOrigins.includes(clean) || env.corsOrigins.includes('*')) return true
+  if (/^https:\/\/[a-z0-9-]+(\.vercel\.app|\.netlify\.app)$/i.test(clean)) return true
+  return false
+}
 
 if (isProduction && env.jwt.secret.length < 32) {
   throw new Error('JWT_SECRET debe tener al menos 32 caracteres en producción.')

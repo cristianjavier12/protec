@@ -2,9 +2,11 @@
  * Configuración global leída desde variables de entorno (Vite).
  * Ver .env.example
  */
+const PROD_BACKEND = 'https://protec-production-9841.up.railway.app'
+
 export const config = {
-  apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:4000/api',
-  socketUrl: import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000',
+  apiUrl: import.meta.env.VITE_API_URL || (import.meta.env.PROD ? `${PROD_BACKEND}/api` : 'http://localhost:4000/api'),
+  socketUrl: import.meta.env.VITE_SOCKET_URL || (import.meta.env.PROD ? PROD_BACKEND : 'http://localhost:4000'),
   cloudinary: {
     cloudName: import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '',
     uploadPreset: import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '',

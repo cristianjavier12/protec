@@ -2,7 +2,7 @@ import cors from 'cors'
 import express from 'express'
 import helmet from 'helmet'
 import morgan from 'morgan'
-import { env } from './config/env.js'
+import { env, isAllowedOrigin } from './config/env.js'
 import { errorHandler, notFound } from './middleware/errorHandler.js'
 import { apiLimiter } from './middleware/rateLimit.js'
 import routes from './routes/index.js'
@@ -29,7 +29,7 @@ export function createApp() {
   app.use(
     cors({
       origin(origin, cb) {
-        if (!origin || env.corsOrigins.includes(origin)) return cb(null, true)
+        if (isAllowedOrigin(origin)) return cb(null, true)
         return cb(null, false)
       },
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -37,6 +37,13 @@ export function createApp() {
       maxAge: 600,
     }),
   )
+  app.use((req, _res, next) => {
+    const origin = req.headers.origin
+    if (origin && !process.env.FRONTEND_URL && /^https:\/\//i.test(origin) && isAllowedOrigin(origin)) {
+      env.frontendUrl = origin.replace(/\/+$/, '')
+    }
+    next()
+  })
   // Webhook de Stripe: necesita el cuerpo SIN procesar para verificar la firma (va antes de express.json).
   app.post('/api/payments/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), asyncHandler(stripeWebhook))
 
