@@ -34,7 +34,8 @@ import {
   serializeTechnicianPublic,
 } from '../utils/serializers.js'
 import { FOLIO_RE, normalizeFolio } from '../utils/validators.js'
-import { emitRepairUpdated, notify } from './notificationService.js'
+import { specialtyCovers } from './assignmentService.js'
+import { emitRepairUpdated, emitToUsers, notify } from './notificationService.js'
 import { findAuthorizedRepair, resolveEvidenceTokens } from './repairService.js'
 
 /**
@@ -206,8 +207,11 @@ function techActions(row, { budget, logistica }, resumen) {
         ? { tipo: 'pago_final', label: 'Pago final (saldo)', monto: resumen.saldoPendiente }
         : null
 
+  const isUnassigned = !row.id_tecnico
+  const isPendingConfirm = isUnassigned || e === S.PENDING_TECH || e === S.REGISTERED
+
   const waiting = {
-    [S.PENDING_TECH]: 'Confirma el folio para aceptar el caso y comenzar con el diagnóstico y presupuesto, o recházalo si no puedes atenderlo.',
+    [S.PENDING_TECH]: 'Confirma para quedarte con el folio y comenzar con el diagnóstico y presupuesto, o recházalo si no puedes atenderlo.',
     [S.PENDING_DEPOSIT]: 'Pendiente de anticipo del 50 %. Puedes confirmar aquí mismo cuando el pago se haya realizado.',
     [S.PICKUP_PENDING]: 'Esperando que el cliente programe la recolección.',
     [S.BUDGET_REJECTED]: 'El cliente rechazó el presupuesto. Puedes enviar uno nuevo.',
@@ -216,13 +220,14 @@ function techActions(row, { budget, logistica }, resumen) {
   }[e]
 
   return {
-    transitions: techTransitions(row),
-    canConfirmFolio: e === S.PENDING_TECH || e === S.REGISTERED,
-    canRejectFolio: e === S.PENDING_TECH || e === S.REGISTERED || (e === S.TECH_ASSIGNED && (!budget || budget.estado === 'Rechazado')),
+    transitions: isUnassigned ? [] : techTransitions(row),
+    sinAsignar: isUnassigned,
+    canConfirmFolio: isPendingConfirm,
+    canRejectFolio: isPendingConfirm || (e === S.TECH_ASSIGNED && (!budget || budget.estado === 'Rechazado')),
     pendingPayment,
-    canDiagnose: WORKSHOP_STATUSES.includes(e) || e === S.BUDGET_REJECTED,
-    canBudget: BUDGET_STATUSES.includes(e) && (!budget || budget.estado === 'Rechazado'),
-    canWork: WORKSHOP_STATUSES.includes(e) || e === S.READY,
+    canDiagnose: !isUnassigned && (WORKSHOP_STATUSES.includes(e) || e === S.BUDGET_REJECTED),
+    canBudget: !isUnassigned && BUDGET_STATUSES.includes(e) && (!budget || budget.estado === 'Rechazado'),
+    canWork: !isUnassigned && (WORKSHOP_STATUSES.includes(e) || e === S.READY),
     logistics: nextLogistics,
     waitingFor: (budget?.estado === 'Pendiente' ? 'Esperando que el cliente responda el presupuesto.' : waiting) ?? null,
   }
@@ -259,28 +264,62 @@ export async function getRepairDetail(user, folio) {
 
 /* ======================= técnico ======================= */
 
-/** Solo el técnico asignado puede operar la solicitud (otro técnico recibe 403). */
-export async function findAssignedRepair(rawFolio, user) {
+/**
+ * Valida que el técnico pueda acceder u operar sobre el folio.
+ * Cuando `allowUnassignedPending` es true, permite consultar o responder un folio sin técnico
+ * asignado siempre que esté en "Pendiente de técnico" o "Solicitud registrada" y su tipo de
+ * dispositivo corresponda a la especialidad del técnico.
+ */
+export async function findAssignedRepair(rawFolio, user, { allowUnassignedPending = false } = {}) {
   const folio = normalizeFolio(rawFolio)
   if (!FOLIO_RE.test(folio)) throw AppError.notFound('No encontramos una solicitud con ese folio.')
   const row = await repairModel.findByFolio(folio)
   if (!row) throw AppError.notFound('No encontramos una solicitud con ese folio.')
-  if (row.id_tecnico !== user.id) throw AppError.forbidden('Esta solicitud no está asignada a tu cuenta.')
-  return row
+  if (row.id_tecnico === user.id) return row
+
+  if (allowUnassignedPending) {
+    if (!row.id_tecnico && [S.PENDING_TECH, S.REGISTERED].includes(row.estado)) {
+      const profile = await technicianModel.findByUserId(user.id)
+      const especialidad = profile?.especialidad ?? 'general'
+      if (specialtyCovers(especialidad, row.dispositivo_tipo)) {
+        return row
+      }
+    }
+    if (row.id_tecnico && row.id_tecnico !== user.id) {
+      throw AppError.conflict('Otro técnico especialista ya confirmó y se quedó con este folio.')
+    }
+  }
+
+  throw AppError.forbidden('Esta solicitud no está asignada a tu cuenta.')
 }
 
 export async function getTechnicianDetail(user, folio) {
-  const row = await findAssignedRepair(folio, user)
+  const row = await findAssignedRepair(folio, user, { allowUnassignedPending: true })
   return buildDetail(row, user, { asTechnician: true })
 }
 
+async function emitSpecialtyRefresh(row) {
+  try {
+    const specialists = (await technicianModel.findAvailable()).filter((t) =>
+      specialtyCovers(t.especialidad, row.dispositivo_tipo),
+    )
+    emitToUsers(
+      specialists.map((t) => t.id_usuario),
+      'repair:updated',
+      { folio: row.folio, repairId: row.id_solicitud },
+    )
+  } catch {
+    /* best-effort */
+  }
+}
+
 /**
- * Permite al técnico especializado confirmar (aceptar) o rechazar un folio asignado.
- * - Si confirma (accept === true): pasa a "Técnico asignado" y notifica al cliente.
- * - Si rechaza (accept === false): pasa a "Folio rechazado", libera el folio y notifica al cliente.
+ * Permite a un técnico especializado confirmar (para quedarse con el folio) o rechazarlo.
+ * - Si confirma (accept === true): asigna `id_tecnico = user.id`, pasa a "Técnico asignado" y notifica al cliente.
+ * - Si rechaza (accept === false): pasa a "Folio rechazado", deja `id_tecnico = null` y notifica al cliente.
  */
 export async function respondTechnicianAssignment(user, rawFolio, body) {
-  const row = await findAssignedRepair(rawFolio, user)
+  const row = await findAssignedRepair(rawFolio, user, { allowUnassignedPending: true })
   const accept = body.accept === true
   const motivo = text(body.motivo, 300)
   const techUser = await userModel.findById(user.id)
@@ -291,11 +330,14 @@ export async function respondTechnicianAssignment(user, rawFolio, body) {
       throw AppError.conflict('Este folio ya fue confirmado.')
     }
     await withTransaction(async (conn) => {
-      await assertLockedStatus(row.id_solicitud, [S.PENDING_TECH, S.REGISTERED], conn)
+      const locked = await assertLockedStatus(row.id_solicitud, [S.PENDING_TECH, S.REGISTERED], conn)
+      if (locked.id_tecnico && locked.id_tecnico !== user.id) {
+        throw AppError.conflict('Otro técnico especialista ya confirmó y se quedó con este folio.')
+      }
       await setStatus(
         row.id_solicitud,
         S.TECH_ASSIGNED,
-        `${techName} confirmó el folio y aceptó atender la solicitud.`,
+        `${techName} confirmó el folio y se quedó con la solicitud.`,
         { id_tecnico: user.id, requiere_tecnico: 1 },
         conn,
       )
@@ -306,10 +348,11 @@ export async function respondTechnicianAssignment(user, rawFolio, body) {
         userId: row.id_usuario,
         tipo: 'estado',
         email: true,
-        titulo: 'Técnico confirmó tu folio',
-        mensaje: `${techName} confirmó tu solicitud ${row.folio} (${row.dispositivo_marca} ${row.dispositivo_modelo}). Ya puedes comunicarte por chat.`,
+        titulo: 'Técnico especialista asignado',
+        mensaje: `${techName} confirmó tu solicitud ${row.folio} (${row.dispositivo_marca} ${row.dispositivo_modelo}) y atenderá tu caso. Ya puedes comunicarte por chat.`,
       },
     ])
+    await emitSpecialtyRefresh(row)
     return getTechnicianDetail(user, row.folio)
   }
 
@@ -322,7 +365,10 @@ export async function respondTechnicianAssignment(user, rawFolio, body) {
   }
 
   await withTransaction(async (conn) => {
-    await assertLockedStatus(row.id_solicitud, [S.PENDING_TECH, S.REGISTERED, S.TECH_ASSIGNED], conn)
+    const locked = await assertLockedStatus(row.id_solicitud, [S.PENDING_TECH, S.REGISTERED, S.TECH_ASSIGNED], conn)
+    if (locked.id_tecnico && locked.id_tecnico !== user.id) {
+      throw AppError.conflict('Otro técnico especialista ya confirmó y se quedó con este folio.')
+    }
     await setStatus(
       row.id_solicitud,
       S.FOLIO_REJECTED,
@@ -341,6 +387,7 @@ export async function respondTechnicianAssignment(user, rawFolio, body) {
       mensaje: `${techName} rechazó la solicitud ${row.folio} (${row.dispositivo_marca} ${row.dispositivo_modelo}).${motivo ? ` Motivo: ${motivo}` : ''}`,
     },
   ])
+  await emitSpecialtyRefresh(row)
   return { rejected: true, folio: row.folio }
 }
 

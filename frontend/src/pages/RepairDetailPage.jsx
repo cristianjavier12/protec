@@ -356,10 +356,16 @@ export default function RepairDetailPage() {
               </div>
 
               {/* ─── Siguiente paso ─── */}
-              {repair.estado === 'Pendiente de técnico' && repair.tecnicoPerfil && (
-                <NextStep icon={Wrench} title="En espera de confirmación del técnico" tone="amber">
+              {repair.estado === 'Pendiente de técnico' && (
+                <NextStep icon={Wrench} title="En espera de confirmación de un técnico especialista" tone="amber">
                   <p className="text-sm text-muted">
-                    Tu folio fue enviado automáticamente al especialista <strong className="text-ink">{repair.tecnicoPerfil.nombre}</strong>. Recibirás una notificación en cuanto confirme tu solicitud.
+                    {repair.tecnicoPerfil ? (
+                      <>
+                        Tu folio está en espera de que el especialista <strong className="text-ink">{repair.tecnicoPerfil.nombre}</strong> confirme tu solicitud.
+                      </>
+                    ) : (
+                      'Tu folio está disponible para los técnicos especialistas del área. Recibirás una notificación en cuanto un especialista confirme para quedarse con tu folio.'
+                    )}
                   </p>
                 </NextStep>
               )}

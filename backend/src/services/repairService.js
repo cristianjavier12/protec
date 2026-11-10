@@ -27,7 +27,12 @@ export function canAccessRepair(user, row) {
   if (!user || !row) return false
   if (user.rol === ROLES.ADMIN) return true
   if (row.id_usuario === user.id) return true
-  if (user.rol === ROLES.TECHNICIAN && row.id_tecnico === user.id) return true
+  if (
+    user.rol === ROLES.TECHNICIAN &&
+    (row.id_tecnico === user.id || (!row.id_tecnico && [REPAIR_STATUS.PENDING_TECH, REPAIR_STATUS.REGISTERED].includes(row.estado)))
+  ) {
+    return true
+  }
   return false
 }
 
@@ -126,14 +131,12 @@ export const repairService = {
         `Solicitud creada desde la plataforma${fotos ? ` con ${fotos} ${fotos === 1 ? 'fotografía' : 'fotografías'}` : ''}.`,
         conn,
       )
-      // Al abrir un folio, pasa automáticamente al técnico especializado para que lo confirme o rechace.
+      // Al abrir un folio, queda disponible para los técnicos especialistas del área hasta que uno confirme o rechace.
       await repairModel.updateStatus(id, { estado: REPAIR_STATUS.PENDING_TECH, requiereTecnico: true, prioridad: 'media' }, conn)
       await statusHistoryModel.add(
         id,
         REPAIR_STATUS.PENDING_TECH,
-        data.atencion === 'tecnico'
-          ? 'El cliente solicitó atención directa de un técnico especializado.'
-          : 'Folio abierto y enviado para revisión de un técnico especializado.',
+        'Folio disponible para los técnicos especialistas del área. En espera de que un especialista confirme el folio.',
         conn,
       )
       return id

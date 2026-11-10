@@ -81,8 +81,8 @@ export default function RepairCreatedPage() {
               <Wrench className="mt-0.5 size-5 shrink-0 text-electric" aria-hidden />
               <p className="text-sm text-muted">
                 {repair?.tecnico
-                  ? <>Tu folio se envió a <strong className="text-ink">{repair.tecnico.nombre}</strong>, que revisará tu caso. Ya puedes escribirle por chat.</>
-                  : 'Tu folio se envió directamente a un técnico. Estamos buscando un especialista disponible y te avisaremos en cuanto sea asignado.'}
+                  ? <>El técnico especialista <strong className="text-ink">{repair.tecnico.nombre}</strong> confirmó tu folio y revisará tu caso. Ya puedes escribirle por chat.</>
+                  : 'Tu folio ya está disponible para los técnicos especialistas del área. Te avisaremos en cuanto un especialista confirme y se quede con tu folio.'}
               </p>
             </div>
           )}

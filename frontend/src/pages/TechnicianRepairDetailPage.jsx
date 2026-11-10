@@ -606,9 +606,11 @@ export default function TechnicianRepairDetailPage() {
           {a.canConfirmFolio ? (
             <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="font-bold text-ink">Nuevo folio asignado a tu especialidad</p>
+                <p className="font-bold text-ink">
+                  {a.sinAsignar ? 'Folio disponible en tu especialidad (sin técnico asignado)' : 'Folio pendiente de confirmación'}
+                </p>
                 <p className="mt-0.5 text-sm text-muted">
-                  Confirma el folio para tomar el caso y habilitar el diagnóstico y presupuesto, o recházalo si no puedes atenderlo.
+                  Confirma para quedarte con el folio y habilitar el diagnóstico y presupuesto, o recházalo si no puedes atenderlo.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 shrink-0">

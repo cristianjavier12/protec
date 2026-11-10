@@ -103,6 +103,7 @@ export default function TechnicianDashboardPage() {
       await load(true)
     } catch (err) {
       notify({ type: 'warning', title: 'No se pudo confirmar', description: err?.message })
+      await load(true)
     } finally {
       setBusyFolio(null)
     }
@@ -123,6 +124,7 @@ export default function TechnicianDashboardPage() {
       await load(true)
     } catch (err) {
       notify({ type: 'warning', title: 'No se pudo rechazar', description: err?.message })
+      await load(true)
     } finally {
       setRejecting(false)
     }
@@ -260,6 +262,11 @@ export default function TechnicianDashboardPage() {
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-bold text-electric">{r.folio}</span>
                               <StatusBadge estado={r.estado} />
+                              {r.sinAsignar && (
+                                <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                                  Disponible en tu especialidad
+                                </span>
+                              )}
                               {pr && <span className={cn('rounded-full px-2.5 py-0.5 text-[11px] font-semibold', pr.className)}>Prioridad {pr.label.toLowerCase()}</span>}
                             </div>
                             <p className="mt-1 font-semibold text-ink">
@@ -268,7 +275,7 @@ export default function TechnicianDashboardPage() {
                             <p className="mt-0.5 line-clamp-1 text-sm text-muted">{r.descripcion}</p>
                             <p className="mt-1 flex flex-wrap gap-x-4 text-xs text-muted">
                               <span>Cliente: <strong className="font-medium text-ink">{r.cliente}</strong></span>
-                              <span>Asignada: {formatDate(r.fechaAsignacion ?? r.fechaCreacion)}</span>
+                              <span>{r.sinAsignar ? `Abierto: ${formatDate(r.fechaCreacion)}` : `Asignada: ${formatDate(r.fechaAsignacion ?? r.fechaCreacion)}`}</span>
                               {r.categoria && <span>Problema: {r.categoria}</span>}
                             </p>
                             <ProgressBar value={r.progreso} showLabel={false} className="mt-3 max-w-sm" />

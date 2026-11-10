@@ -1,6 +1,5 @@
 import { repairModel } from '../models/repairModel.js'
 import { technicianModel } from '../models/technicianModel.js'
-import { claimPendingForTechnician } from '../services/assignmentService.js'
 import * as workflow from '../services/workflowService.js'
 import { REPAIR_STATUS as S, STATUS_PROGRESS } from '../utils/constants.js'
 import { iso } from '../utils/serializers.js'
@@ -18,15 +17,19 @@ export async function getDashboard(req, res) {
   const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 40) : ''
 
   const profile = await technicianModel.findByUserId(req.user.id)
-  await claimPendingForTechnician(req.user.id, profile?.especialidad ?? 'general')
+  const especialidad = profile?.especialidad ?? 'general'
 
   const [counts, rows] = await Promise.all([
-    repairModel.countByTechnicianGroups(req.user.id, {
-      pendientes_diagnostico: [S.PENDING_TECH, S.REGISTERED, S.TECH_ASSIGNED, S.DEVICE_RECEIVED, S.IN_REVIEW],
-      en_reparacion: GROUPS.in_repair,
-      terminadas: GROUPS.finished,
-    }),
-    repairModel.listByTechnician(req.user.id, { statuses: filter ? GROUPS[filter] : null, search }),
+    repairModel.countByTechnicianGroups(
+      req.user.id,
+      {
+        pendientes_diagnostico: [S.PENDING_TECH, S.REGISTERED, S.TECH_ASSIGNED, S.DEVICE_RECEIVED, S.IN_REVIEW],
+        en_reparacion: GROUPS.in_repair,
+        terminadas: GROUPS.finished,
+      },
+      { especialidad },
+    ),
+    repairModel.listByTechnician(req.user.id, { statuses: filter ? GROUPS[filter] : null, search, especialidad }),
   ])
 
   res.json({
@@ -47,8 +50,9 @@ export async function getDashboard(req, res) {
     repairs: rows.map((r) => ({
       folio: r.folio,
       estado: r.estado,
-      pendienteConfirmacion: r.estado === S.PENDING_TECH || r.estado === S.REGISTERED,
-      puedeRechazar: r.estado === S.PENDING_TECH || r.estado === S.REGISTERED || r.estado === S.TECH_ASSIGNED,
+      sinAsignar: !r.id_tecnico,
+      pendienteConfirmacion: !r.id_tecnico || r.estado === S.PENDING_TECH || r.estado === S.REGISTERED,
+      puedeRechazar: !r.id_tecnico || r.estado === S.PENDING_TECH || r.estado === S.REGISTERED || r.estado === S.TECH_ASSIGNED,
       pagoPendiente: r.estado === S.PENDING_DEPOSIT ? 'anticipo' : r.estado === S.REPAIR_DONE ? 'pago_final' : null,
       progreso: STATUS_PROGRESS[r.estado] ?? 0,
       prioridad: r.prioridad,
@@ -60,7 +64,7 @@ export async function getDashboard(req, res) {
       fechaAsignacion: iso(r.fecha_asignacion),
       fechaCreacion: iso(r.fecha_creacion),
       fechaActualizacion: iso(r.fecha_actualizacion),
-      transiciones: workflow.techTransitions(r),
+      transiciones: r.id_tecnico ? workflow.techTransitions(r) : [],
     })),
   })
 }
@@ -73,7 +77,7 @@ export async function respondFolio(req, res) {
   const accept = req.body?.accept === true
   const result = await workflow.respondTechnicianAssignment(req.user, req.params.folio, req.body ?? {})
   res.json({
-    message: accept ? 'Folio confirmado. Ya puedes registrar diagnóstico y presupuesto.' : 'Folio rechazado.',
+    message: accept ? 'Folio confirmado y asignado a tu cuenta. Ya puedes registrar diagnóstico y presupuesto.' : 'Folio rechazado.',
     ...(result?.rejected ? { rejected: true, folio: result.folio } : { repair: result }),
   })
 }

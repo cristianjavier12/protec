@@ -1,5 +1,18 @@
 import { query, queryOne } from '../config/db.js'
-import { FINISHED_STATUSES } from '../utils/constants.js'
+import { FINISHED_STATUSES, REPAIR_STATUS, SPECIALTY_DEVICES } from '../utils/constants.js'
+
+/** Condición SQL para incluir solicitudes asignadas al técnico y folios pendientes sin técnico de su especialidad. */
+function techScopeClause(techId, especialidad = 'general') {
+  const allowedDevices = SPECIALTY_DEVICES[especialidad] ?? SPECIALTY_DEVICES.general ?? ['celular', 'laptop', 'computadora']
+  if (!allowedDevices.length) {
+    return { clause: 's.id_tecnico = ?', params: [techId] }
+  }
+  const devPlaceholders = allowedDevices.map(() => '?').join(', ')
+  return {
+    clause: `(s.id_tecnico = ? OR (s.id_tecnico IS NULL AND s.estado IN (?, ?) AND d.tipo IN (${devPlaceholders})))`,
+    params: [techId, REPAIR_STATUS.PENDING_TECH, REPAIR_STATUS.REGISTERED, ...allowedDevices],
+  }
+}
 
 /** Acceso a la tabla `solicitudes` (con datos del dispositivo y técnico). */
 
@@ -127,10 +140,11 @@ export const repairModel = {
     return { total, terminadas, pendientes, activas: Math.max(0, total - terminadas - pendientes) }
   },
 
-  /** Solicitudes asignadas a un técnico. groups: { pending, in_review, in_repair, finished } -> arreglos de estados. */
-  listByTechnician(techId, { statuses = null, search = '' } = {}, conn) {
-    const where = ['s.id_tecnico = ?']
-    const params = [techId]
+  /** Solicitudes asignadas a un técnico o disponibles en su especialidad. groups: { pending, in_review, in_repair, finished } -> arreglos de estados. */
+  listByTechnician(techId, { statuses = null, search = '', especialidad = 'general' } = {}, conn) {
+    const scope = techScopeClause(techId, especialidad)
+    const where = [scope.clause]
+    const params = [...scope.params]
     if (statuses?.length) {
       where.push(`s.estado IN (${statuses.map(() => '?').join(', ')})`)
       params.push(...statuses)
@@ -151,19 +165,27 @@ export const repairModel = {
          JOIN dispositivos d ON d.id_dispositivo = s.id_dispositivo
          JOIN usuarios u ON u.id_usuario = s.id_usuario
         WHERE ${where.join(' AND ')}
-        ORDER BY FIELD(s.prioridad, 'alta', 'media', 'baja'), s.fecha_actualizacion DESC
+        ORDER BY (s.id_tecnico IS NULL) DESC, FIELD(s.prioridad, 'alta', 'media', 'baja'), s.fecha_actualizacion DESC
         LIMIT 100`,
       params,
       conn,
     )
   },
 
-  async countByTechnicianGroups(techId, groups, conn) {
+  async countByTechnicianGroups(techId, groups, { especialidad = 'general' } = {}, conn) {
+    const scope = techScopeClause(techId, especialidad)
     const cols = Object.entries(groups)
-      .map(([key, statuses]) => `COALESCE(SUM(estado IN (${statuses.map(() => '?').join(', ')})), 0) AS ${key}`)
+      .map(([key, statuses]) => `COALESCE(SUM(s.estado IN (${statuses.map(() => '?').join(', ')})), 0) AS ${key}`)
       .join(', ')
     const params = Object.values(groups).flat()
-    const row = await queryOne(`SELECT COUNT(*) AS total, ${cols} FROM solicitudes WHERE id_tecnico = ?`, [...params, techId], conn)
+    const row = await queryOne(
+      `SELECT COUNT(*) AS total, ${cols}
+         FROM solicitudes s
+         JOIN dispositivos d ON d.id_dispositivo = s.id_dispositivo
+        WHERE ${scope.clause}`,
+      [...params, ...scope.params],
+      conn,
+    )
     return Object.fromEntries(Object.entries(row ?? {}).map(([k, v]) => [k, Number(v ?? 0)]))
   },
 
