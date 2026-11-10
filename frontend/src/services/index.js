@@ -103,6 +103,8 @@ export const technicianService = {
   getRepairDetail: (folio) => api.get(`/technician/repairs/${encodeURIComponent(folio)}`),
   respondFolio: (folio, data) =>
     api.post(`/technician/repairs/${encodeURIComponent(folio)}/respond`, data),
+  confirmPayment: (folio, data) =>
+    api.post(`/technician/repairs/${encodeURIComponent(folio)}/payments`, data),
   saveDiagnosis: (folio, data) =>
     api.post(`/technician/repairs/${encodeURIComponent(folio)}/diagnosis`, data),
   createBudget: (folio, data) =>

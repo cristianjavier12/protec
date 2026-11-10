@@ -49,6 +49,7 @@ export async function getDashboard(req, res) {
       estado: r.estado,
       pendienteConfirmacion: r.estado === S.PENDING_TECH || r.estado === S.REGISTERED,
       puedeRechazar: r.estado === S.PENDING_TECH || r.estado === S.REGISTERED || r.estado === S.TECH_ASSIGNED,
+      pagoPendiente: r.estado === S.PENDING_DEPOSIT ? 'anticipo' : r.estado === S.REPAIR_DONE ? 'pago_final' : null,
       progreso: STATUS_PROGRESS[r.estado] ?? 0,
       prioridad: r.prioridad,
       categoria: r.categoria,
@@ -75,6 +76,11 @@ export async function respondFolio(req, res) {
     message: accept ? 'Folio confirmado. Ya puedes registrar diagnóstico y presupuesto.' : 'Folio rechazado.',
     ...(result?.rejected ? { rejected: true, folio: result.folio } : { repair: result }),
   })
+}
+
+export async function confirmPayment(req, res) {
+  const repair = await workflow.confirmPaymentByTechnician(req.user, req.params.folio, req.body ?? {})
+  res.json({ message: 'Pago confirmado correctamente.', repair })
 }
 
 export async function saveDiagnosis(req, res) {

@@ -188,7 +188,7 @@ export function techTransitions(row) {
   return next
 }
 
-function techActions(row, { budget, logistica }) {
+function techActions(row, { budget, logistica }, resumen) {
   const e = row.estado
   const nextLogistics = logistica
     .filter((l) => l.estado !== 'Cancelada')
@@ -199,12 +199,19 @@ function techActions(row, { budget, logistica }) {
     })
     .filter((l) => l.next)
 
+  const pendingPayment =
+    e === S.PENDING_DEPOSIT && budget?.estado === 'Aceptado' && resumen?.anticipoPagado === 0
+      ? { tipo: 'anticipo', label: 'Anticipo (50 %)', monto: resumen.anticipoRequerido }
+      : e === S.REPAIR_DONE && resumen?.anticipoPagado > 0 && resumen?.saldoPendiente > 0
+        ? { tipo: 'pago_final', label: 'Pago final (saldo)', monto: resumen.saldoPendiente }
+        : null
+
   const waiting = {
     [S.PENDING_TECH]: 'Confirma el folio para aceptar el caso y comenzar con el diagnóstico y presupuesto, o recházalo si no puedes atenderlo.',
-    [S.PENDING_DEPOSIT]: 'Esperando que el cliente registre el anticipo del 50 %.',
+    [S.PENDING_DEPOSIT]: 'Pendiente de anticipo del 50 %. Puedes confirmar aquí mismo cuando el pago se haya realizado.',
     [S.PICKUP_PENDING]: 'Esperando que el cliente programe la recolección.',
     [S.BUDGET_REJECTED]: 'El cliente rechazó el presupuesto. Puedes enviar uno nuevo.',
-    [S.REPAIR_DONE]: 'Esperando el pago del saldo pendiente.',
+    [S.REPAIR_DONE]: 'Pendiente del pago final. Puedes confirmar aquí mismo cuando el pago se haya realizado.',
     [S.READY]: row.metodo_entrega ? null : 'Esperando que el cliente elija el método de entrega.',
   }[e]
 
@@ -212,6 +219,7 @@ function techActions(row, { budget, logistica }) {
     transitions: techTransitions(row),
     canConfirmFolio: e === S.PENDING_TECH || e === S.REGISTERED,
     canRejectFolio: e === S.PENDING_TECH || e === S.REGISTERED || (e === S.TECH_ASSIGNED && (!budget || budget.estado === 'Rechazado')),
+    pendingPayment,
     canDiagnose: WORKSHOP_STATUSES.includes(e) || e === S.BUDGET_REJECTED,
     canBudget: BUDGET_STATUSES.includes(e) && (!budget || budget.estado === 'Rechazado'),
     canWork: WORKSHOP_STATUSES.includes(e) || e === S.READY,
@@ -238,7 +246,7 @@ async function buildDetail(row, viewer, { asTechnician = false } = {}) {
   if (asTechnician) {
     const client = await userModel.findById(row.id_usuario)
     detail.cliente = client ? { id: row.id_usuario, nombre: client.nombre, apellidos: client.apellidos, telefono: client.telefono } : null
-    detail.accionesTecnico = techActions(row, b)
+    detail.accionesTecnico = techActions(row, b, resumen)
   }
   return detail
 }
@@ -836,6 +844,45 @@ export async function registerManualPayment(admin, folio, body) {
 
   await afterChange(row.id_solicitud, paymentNotifications(row, tipo, monto, metodo))
   return getRepairDetail(admin, row.folio)
+}
+
+/**
+ * Permite al técnico asignado confirmar que el pago (anticipo o pago final) se realizó.
+ */
+export async function confirmPaymentByTechnician(user, rawFolio, body = {}) {
+  const row = await findAssignedRepair(rawFolio, user)
+  const inferredTipo = row.estado === S.PENDING_DEPOSIT ? 'anticipo' : row.estado === S.REPAIR_DONE ? 'pago_final' : null
+  const tipo = ['anticipo', 'pago_final'].includes(body.tipo) ? body.tipo : inferredTipo
+  if (!tipo) {
+    throw AppError.conflict('Esta solicitud no tiene un pago pendiente por confirmar en su estado actual.')
+  }
+  const metodo = ['Efectivo', 'Transferencia', 'Tarjeta'].includes(body.metodo) ? body.metodo : 'Efectivo'
+  const referencia = text(body.referencia, 100)
+  const techUser = await userModel.findById(user.id)
+  const techName = techUser ? `${techUser.nombre} ${techUser.apellidos}`.trim() : 'el técnico'
+
+  let monto = 0
+  await withTransaction(async (conn) => {
+    const due = await duePayment(row, tipo, conn)
+    monto = due.monto
+    await cancelPendingCheckouts(row.id_solicitud, tipo, conn)
+    await paymentModel.create(
+      {
+        idSolicitud: row.id_solicitud,
+        tipo,
+        monto,
+        estado: 'pagado',
+        metodo,
+        referencia: referencia || `Pago confirmado por ${techName}`,
+        registradoPor: user.id,
+      },
+      conn,
+    )
+    await advanceAfterPayment(row, { tipo, monto, metodo, nextStatus: due.nextStatus }, conn)
+  })
+
+  await afterChange(row.id_solicitud, paymentNotifications(row, tipo, monto, metodo))
+  return getTechnicianDetail(user, row.folio)
 }
 
 export async function schedulePickup(user, folio, body) {

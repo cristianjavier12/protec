@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Check, CheckCircle2, ClipboardList, Eye, MessageSquare, RefreshCw, Search, Star, Stethoscope, ToggleLeft, ToggleRight, Wrench, XCircle } from 'lucide-react'
+import { Banknote, Check, CheckCircle2, ClipboardList, Eye, MessageSquare, RefreshCw, Search, Star, Stethoscope, ToggleLeft, ToggleRight, Wrench, XCircle } from 'lucide-react'
 import { Container } from '../components/ui/Container'
 import Button from '../components/ui/Button'
 import DashboardStatCard from '../components/workflow/DashboardStatCard'
@@ -44,6 +44,10 @@ export default function TechnicianDashboardPage() {
   const [rejectTarget, setRejectTarget] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
   const [rejecting, setRejecting] = useState(false)
+  const [paymentTarget, setPaymentTarget] = useState(null)
+  const [paymentMethod, setPaymentMethod] = useState('Efectivo')
+  const [paymentRef, setPaymentRef] = useState('')
+  const [confirmingPay, setConfirmingPay] = useState(false)
   const jobsRef = useRef(null)
 
   // Búsqueda con pequeña espera para no consultar en cada tecla.
@@ -121,6 +125,27 @@ export default function TechnicianDashboardPage() {
       notify({ type: 'warning', title: 'No se pudo rechazar', description: err?.message })
     } finally {
       setRejecting(false)
+    }
+  }
+
+  const handleConfirmPayment = async (e) => {
+    e.preventDefault()
+    if (!paymentTarget) return
+    setConfirmingPay(true)
+    try {
+      const res = await technicianService.confirmPayment(paymentTarget.folio, {
+        tipo: paymentTarget.pagoPendiente,
+        metodo: paymentMethod,
+        referencia: paymentRef.trim() || undefined,
+      })
+      notify({ type: 'success', title: 'Pago confirmado', description: res.message })
+      setPaymentTarget(null)
+      setPaymentRef('')
+      await load(true)
+    } catch (err) {
+      notify({ type: 'warning', title: 'No se pudo confirmar el pago', description: err?.message })
+    } finally {
+      setConfirmingPay(false)
     }
   }
 
@@ -281,6 +306,20 @@ export default function TechnicianDashboardPage() {
                             </>
                           ) : (
                             <>
+                              {r.pagoPendiente && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPaymentTarget(r)
+                                    setPaymentMethod('Efectivo')
+                                    setPaymentRef('')
+                                  }}
+                                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                                >
+                                  <Banknote className="size-4" aria-hidden />
+                                  {r.pagoPendiente === 'anticipo' ? 'Confirmar anticipo' : 'Confirmar pago final'}
+                                </button>
+                              )}
                               <Link to={techRepairDetailPath(r.folio)} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-electric px-4 text-sm font-semibold text-white shadow-glow transition hover:bg-electric-600">
                                 <Eye className="size-4" aria-hidden /> Ver detalles
                               </Link>
@@ -308,6 +347,42 @@ export default function TechnicianDashboardPage() {
             )}
           </div>
         </div>
+
+        <Modal
+          open={Boolean(paymentTarget)}
+          onClose={confirmingPay ? undefined : () => setPaymentTarget(null)}
+          title={paymentTarget?.pagoPendiente === 'anticipo' ? 'Confirmar pago de anticipo' : 'Confirmar pago final'}
+          description={paymentTarget ? `${paymentTarget.folio} · ${paymentTarget.dispositivo.marca} ${paymentTarget.dispositivo.modelo}` : ''}
+        >
+          <form onSubmit={handleConfirmPayment} className="flex flex-col gap-4">
+            <p className="text-sm text-muted">
+              Confirma que el cliente realizó {paymentTarget?.pagoPendiente === 'anticipo' ? 'el pago del anticipo (50 %)' : 'el pago final'} para avanzar la solicitud al siguiente estado.
+            </p>
+            <Field label="Método de pago recibido">
+              <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={inputClass}>
+                <option value="Efectivo">Efectivo</option>
+                <option value="Transferencia">Transferencia bancaria</option>
+                <option value="Tarjeta">Tarjeta</option>
+              </select>
+            </Field>
+            <Field label="Referencia o nota (opcional)">
+              <input
+                value={paymentRef}
+                onChange={(e) => setPaymentRef(e.target.value.slice(0, 100))}
+                placeholder="Ej.: Recibido en taller / Folio de transferencia..."
+                className={inputClass}
+              />
+            </Field>
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="secondary" onClick={() => setPaymentTarget(null)} disabled={confirmingPay}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={confirmingPay} leadingIcon={Check} className="bg-emerald-600 text-white shadow-none hover:bg-emerald-700">
+                Confirmar pago
+              </Button>
+            </div>
+          </form>
+        </Modal>
 
         <Modal
           open={Boolean(rejectTarget)}
