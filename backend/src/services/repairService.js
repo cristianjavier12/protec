@@ -126,20 +126,23 @@ export const repairService = {
         `Solicitud creada desde la plataforma${fotos ? ` con ${fotos} ${fotos === 1 ? 'fotografía' : 'fotografías'}` : ''}.`,
         conn,
       )
-      // El cliente eligió omitir el diagnóstico del asistente: el folio pasa directo a un técnico.
-      if (data.atencion === 'tecnico') {
-        await repairModel.updateStatus(id, { estado: REPAIR_STATUS.PENDING_TECH, requiereTecnico: true, prioridad: 'media' }, conn)
-        await statusHistoryModel.add(id, REPAIR_STATUS.PENDING_TECH, 'El cliente solicitó atención directa de un técnico (sin diagnóstico del asistente).', conn)
-      }
+      // Al abrir un folio, pasa automáticamente al técnico especializado para que lo confirme o rechace.
+      await repairModel.updateStatus(id, { estado: REPAIR_STATUS.PENDING_TECH, requiereTecnico: true, prioridad: 'media' }, conn)
+      await statusHistoryModel.add(
+        id,
+        REPAIR_STATUS.PENDING_TECH,
+        data.atencion === 'tecnico'
+          ? 'El cliente solicitó atención directa de un técnico especializado.'
+          : 'Folio abierto y enviado para revisión de un técnico especializado.',
+        conn,
+      )
       return id
     })
 
-    if (data.atencion === 'tecnico') {
-      try {
-        await assignTechnician(repairId)
-      } catch (error) {
-        console.error('[repairs] Error en asignación automática:', error.message)
-      }
+    try {
+      await assignTechnician(repairId)
+    } catch (error) {
+      console.error('[repairs] Error en asignación automática:', error.message)
     }
 
     const row = await repairModel.findById(repairId)

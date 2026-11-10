@@ -356,6 +356,25 @@ export default function RepairDetailPage() {
               </div>
 
               {/* ─── Siguiente paso ─── */}
+              {repair.estado === 'Pendiente de técnico' && repair.tecnicoPerfil && (
+                <NextStep icon={Wrench} title="En espera de confirmación del técnico" tone="amber">
+                  <p className="text-sm text-muted">
+                    Tu folio fue enviado automáticamente al especialista <strong className="text-ink">{repair.tecnicoPerfil.nombre}</strong>. Recibirás una notificación en cuanto confirme tu solicitud.
+                  </p>
+                </NextStep>
+              )}
+
+              {repair.estado === 'Folio rechazado' && (
+                <div className="rounded-3xl border border-red-200 bg-red-50/70 p-5 shadow-soft sm:p-7">
+                  <h2 className="text-lg font-bold text-red-800">Folio rechazado por el técnico</h2>
+                  <p className="mt-1 text-sm text-red-700">
+                    {lastEntry?.estado === 'Folio rechazado' && lastEntry?.descripcion
+                      ? lastEntry.descripcion
+                      : 'El técnico especialista indicó que no es posible atender esta solicitud en este momento.'}
+                  </p>
+                </div>
+              )}
+
               {acciones.respondBudget && <BudgetCard budget={repair.presupuesto} onRespond={respondBudget} busy={budgetBusy} />}
 
               {acciones.payDeposit && (

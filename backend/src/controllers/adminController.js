@@ -117,8 +117,10 @@ export async function assignTech(req, res) {
   if (!FOLIO_RE.test(folio)) throw AppError.notFound('No encontramos una solicitud con ese folio.')
   const repair = await repairModel.findByFolio(folio)
   if (!repair) throw AppError.notFound('No encontramos una solicitud con ese folio.')
-  if (isFinishedStatus(repair.estado)) throw AppError.conflict('La solicitud ya está finalizada.')
-  if (!repair.requiere_tecnico && repair.estado !== S.PENDING_TECH && !repair.id_tecnico) {
+  if (isFinishedStatus(repair.estado) && repair.estado !== S.FOLIO_REJECTED) {
+    throw AppError.conflict('La solicitud ya está finalizada.')
+  }
+  if (!repair.requiere_tecnico && repair.estado !== S.PENDING_TECH && repair.estado !== S.FOLIO_REJECTED && !repair.id_tecnico) {
     throw AppError.conflict('La solicitud aún no requiere técnico (falta el diagnóstico inicial).')
   }
 
@@ -131,11 +133,11 @@ export async function assignTech(req, res) {
   if (!tech) throw AppError.validation({ technicianUserId: 'Selecciona un técnico activo.' })
   if (repair.id_tecnico === tech.id_usuario) throw AppError.conflict('Ese técnico ya está asignado.')
 
-  const firstAssignment = repair.estado === S.PENDING_TECH
+  const firstAssignment = repair.estado === S.PENDING_TECH || repair.estado === S.FOLIO_REJECTED
   await withTransaction(async (conn) => {
     if (firstAssignment) {
-      await query('UPDATE solicitudes SET id_tecnico = ?, estado = ? WHERE id_solicitud = ?', [tech.id_usuario, S.TECH_ASSIGNED, repair.id_solicitud], conn)
-      await statusHistoryModel.add(repair.id_solicitud, S.TECH_ASSIGNED, `Asignación manual: ${tech.nombre} ${tech.apellidos} (${labelSpecialty(tech.especialidad)}).`, conn)
+      await query('UPDATE solicitudes SET id_tecnico = ?, estado = ?, requiere_tecnico = 1 WHERE id_solicitud = ?', [tech.id_usuario, S.PENDING_TECH, repair.id_solicitud], conn)
+      await statusHistoryModel.add(repair.id_solicitud, S.PENDING_TECH, `Asignación manual: ${tech.nombre} ${tech.apellidos} (${labelSpecialty(tech.especialidad)}). En espera de confirmación del técnico.`, conn)
     } else {
       await query('UPDATE solicitudes SET id_tecnico = ? WHERE id_solicitud = ?', [tech.id_usuario, repair.id_solicitud], conn)
       await statusHistoryModel.add(repair.id_solicitud, 'Técnico reasignado', `Ahora atiende ${tech.nombre} ${tech.apellidos}.`, conn)

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
   Bot,
   CalendarClock,
   Camera,
+  Check,
   ClipboardCheck,
   FileText,
   Hash,
@@ -22,11 +23,13 @@ import {
   Tag,
   Truck,
   UserRound,
+  XCircle,
 } from 'lucide-react'
 import { Container } from '../components/ui/Container'
 import Button from '../components/ui/Button'
 import { ProgressBar } from '../components/tracking/TrackingElements'
 import StatusBadge from '../components/workflow/StatusBadge'
+import { Modal } from '../components/workflow/ConfirmDialog'
 import RepairTimeline from '../components/workflow/RepairTimeline'
 import BudgetCard from '../components/workflow/BudgetCard'
 import PaymentSummary from '../components/workflow/PaymentSummary'
@@ -401,12 +404,17 @@ export default function TechnicianRepairDetailPage() {
   usePageTitle(`Trabajo ${folio}`)
   const { user } = useAuth()
   const { notify } = useToast()
+  const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const tab = TABS.some((t) => t.key === params.get('tab')) ? params.get('tab') : 'resumen'
   const [repair, setRepair] = useState(null)
   const [state, setState] = useState('loading')
   const [busyLog, setBusyLog] = useState(null)
   const [removing, setRemoving] = useState(null)
+  const [confirmingFolio, setConfirmingFolio] = useState(false)
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejectingFolio, setRejectingFolio] = useState(false)
 
   const load = useCallback(
     async (silent = false) => {
@@ -454,6 +462,37 @@ export default function TechnicianRepairDetailPage() {
       notify({ type: 'warning', title: 'No se pudo eliminar', description: err?.message })
     } finally {
       setRemoving(null)
+    }
+  }
+
+  const handleConfirmFolio = async () => {
+    setConfirmingFolio(true)
+    try {
+      const res = await technicianService.respondFolio(folio, { accept: true })
+      if (res?.repair) setRepair(res.repair)
+      notify({ type: 'success', title: 'Folio confirmado', description: res.message })
+    } catch (err) {
+      notify({ type: 'warning', title: 'No se pudo confirmar', description: err?.message })
+    } finally {
+      setConfirmingFolio(false)
+    }
+  }
+
+  const handleRejectFolio = async (e) => {
+    e.preventDefault()
+    setRejectingFolio(true)
+    try {
+      const res = await technicianService.respondFolio(folio, {
+        accept: false,
+        motivo: rejectReason.trim() || undefined,
+      })
+      notify({ type: 'success', title: 'Folio rechazado', description: res.message })
+      setRejectOpen(false)
+      navigate(ROUTES.TECH_DASHBOARD, { replace: true })
+    } catch (err) {
+      notify({ type: 'warning', title: 'No se pudo rechazar', description: err?.message })
+    } finally {
+      setRejectingFolio(false)
     }
   }
 
@@ -539,10 +578,59 @@ export default function TechnicianRepairDetailPage() {
             <Info icon={Hourglass} label="Tiempo estimado" value={repair.tiempoEstimado ?? 'Por definir'} />
           </div>
           <ProgressBar value={repair.progreso} className="mt-6" />
-          {a.waitingFor && (
-            <p className="mt-5 flex items-center gap-2 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-              <Hourglass className="size-4 shrink-0" aria-hidden /> {a.waitingFor}
-            </p>
+          {a.canConfirmFolio ? (
+            <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-bold text-ink">Nuevo folio asignado a tu especialidad</p>
+                <p className="mt-0.5 text-sm text-muted">
+                  Confirma el folio para tomar el caso y habilitar el diagnóstico y presupuesto, o recházalo si no puedes atenderlo.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <Button
+                  leadingIcon={Check}
+                  loading={confirmingFolio}
+                  onClick={handleConfirmFolio}
+                  className="bg-emerald-600 text-white shadow-none hover:bg-emerald-700"
+                >
+                  Confirmar folio
+                </Button>
+                <Button
+                  variant="secondary"
+                  leadingIcon={XCircle}
+                  disabled={confirmingFolio}
+                  onClick={() => {
+                    setRejectReason('')
+                    setRejectOpen(true)
+                  }}
+                  className="border-red-200 text-red-600 hover:bg-red-50"
+                >
+                  Rechazar folio
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {a.waitingFor && (
+                <p className="mt-5 flex items-center gap-2 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                  <Hourglass className="size-4 shrink-0" aria-hidden /> {a.waitingFor}
+                </p>
+              )}
+              {a.canRejectFolio && (
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRejectReason('')
+                      setRejectOpen(true)
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:underline"
+                  >
+                    <XCircle className="size-4" aria-hidden /> Rechazar este folio
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -748,6 +836,36 @@ export default function TechnicianRepairDetailPage() {
             />
           )}
         </div>
+
+        <Modal
+          open={rejectOpen}
+          onClose={rejectingFolio ? undefined : () => setRejectOpen(false)}
+          title="Rechazar folio"
+          description={`${repair.folio} · ${device?.marca ?? ''} ${device?.modelo ?? ''}`}
+        >
+          <form onSubmit={handleRejectFolio} className="flex flex-col gap-4">
+            <p className="text-sm text-muted">
+              ¿Deseas rechazar este folio? El cliente recibirá una notificación con el cambio de estado.
+            </p>
+            <Field label="Motivo del rechazo (opcional)">
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value.slice(0, 300))}
+                placeholder="Ej.: Actualmente no contamos con la refacción para este modelo..."
+                className={inputClass}
+              />
+            </Field>
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="secondary" onClick={() => setRejectOpen(false)} disabled={rejectingFolio}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={rejectingFolio} leadingIcon={XCircle} className="bg-red-600 text-white shadow-none hover:bg-red-700">
+                Confirmar rechazo
+              </Button>
+            </div>
+          </form>
+        </Modal>
       </Container>
     </section>
   )

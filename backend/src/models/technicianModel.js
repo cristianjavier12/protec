@@ -12,19 +12,25 @@ export const technicianModel = {
   },
 
   /**
-   * Técnicos activos y disponibles, ordenados por menor carga de trabajo
+   * Técnicos activos, priorizando los marcados como disponibles, menor carga de trabajo
    * y mejor calificación. El filtrado por especialidad se hace en assignmentService.
    */
   findAvailable(conn) {
     return query(
-      `SELECT t.*, u.nombre, u.apellidos,
+      `SELECT u.id_usuario, u.nombre, u.apellidos,
+              t.id_tecnico,
+              COALESCE(t.especialidad, 'general') AS especialidad,
+              COALESCE(t.disponible, 1) AS disponible,
+              COALESCE(t.calificacion, 5.00) AS calificacion,
+              COALESCE(t.servicios_terminados, 0) AS servicios_terminados,
+              COALESCE(t.estado, 1) AS estado,
               (SELECT COUNT(*) FROM solicitudes s
-                WHERE s.id_tecnico = t.id_usuario
-                  AND s.estado NOT IN ('Finalizado','Resuelto mediante diagnóstico','Presupuesto rechazado')) AS carga
-         FROM tecnicos t
-         JOIN usuarios u ON u.id_usuario = t.id_usuario
-        WHERE t.estado = 1 AND t.disponible = 1 AND u.estado = 1 AND u.rol = 'tecnico'
-        ORDER BY carga ASC, t.calificacion DESC, t.id_tecnico ASC`,
+                WHERE s.id_tecnico = u.id_usuario
+                  AND s.estado NOT IN ('Finalizado','Resuelto mediante diagnóstico','Presupuesto rechazado','Folio rechazado')) AS carga
+         FROM usuarios u
+         LEFT JOIN tecnicos t ON t.id_usuario = u.id_usuario
+        WHERE u.estado = 1 AND u.rol = 'tecnico' AND COALESCE(t.estado, 1) = 1
+        ORDER BY COALESCE(t.disponible, 1) DESC, carga ASC, COALESCE(t.calificacion, 5.00) DESC, u.id_usuario ASC`,
       [],
       conn,
     )

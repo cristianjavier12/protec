@@ -47,6 +47,7 @@ export const REPAIR_STATUS = Object.freeze({
   DIAGNOSIS: 'Diagnóstico inicial',
   PENDING_TECH: 'Pendiente de técnico',
   TECH_ASSIGNED: 'Técnico asignado',
+  FOLIO_REJECTED: 'Folio rechazado',
   PENDING_DEPOSIT: 'Pendiente de anticipo',
   BUDGET_REJECTED: 'Presupuesto rechazado',
   READY_TO_RECEIVE: 'Listo para recibir dispositivo',
@@ -69,6 +70,7 @@ export const STATUS_PROGRESS = Object.freeze({
   [REPAIR_STATUS.DIAGNOSIS]: 10,
   [REPAIR_STATUS.PENDING_TECH]: 15,
   [REPAIR_STATUS.TECH_ASSIGNED]: 20,
+  [REPAIR_STATUS.FOLIO_REJECTED]: 0,
   [REPAIR_STATUS.PENDING_DEPOSIT]: 25,
   [REPAIR_STATUS.BUDGET_REJECTED]: 20,
   [REPAIR_STATUS.READY_TO_RECEIVE]: 30,
@@ -88,7 +90,11 @@ export const STATUS_PROGRESS = Object.freeze({
 
 export const ALLOWED_STATUSES = Object.freeze(Object.values(REPAIR_STATUS))
 
-export const FINISHED_STATUSES = Object.freeze([REPAIR_STATUS.FINISHED, REPAIR_STATUS.RESOLVED_BY_DIAGNOSIS])
+export const FINISHED_STATUSES = Object.freeze([
+  REPAIR_STATUS.FINISHED,
+  REPAIR_STATUS.RESOLVED_BY_DIAGNOSIS,
+  REPAIR_STATUS.FOLIO_REJECTED,
+])
 
 export const isFinishedStatus = (estado) => FINISHED_STATUSES.includes(estado)
 

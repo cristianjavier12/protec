@@ -101,6 +101,8 @@ export const technicianService = {
     return api.get(`/technician/dashboard${query}`)
   },
   getRepairDetail: (folio) => api.get(`/technician/repairs/${encodeURIComponent(folio)}`),
+  respondFolio: (folio, data) =>
+    api.post(`/technician/repairs/${encodeURIComponent(folio)}/respond`, data),
   saveDiagnosis: (folio, data) =>
     api.post(`/technician/repairs/${encodeURIComponent(folio)}/diagnosis`, data),
   createBudget: (folio, data) =>

@@ -177,7 +177,7 @@ export default function RequestRepairPage() {
       description: draft.description ?? '',
       contactMethod: draft.contactMethod ?? 'chat',
       pickup: Boolean(draft.pickup),
-      attention: draft.attention === 'tecnico' ? 'tecnico' : 'chatbot',
+      attention: draft.attention === 'chatbot' ? 'chatbot' : 'tecnico',
     }
   })
   const [errors, setErrors] = useState({})

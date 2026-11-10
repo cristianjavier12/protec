@@ -200,6 +200,7 @@ function techActions(row, { budget, logistica }) {
     .filter((l) => l.next)
 
   const waiting = {
+    [S.PENDING_TECH]: 'Confirma el folio para aceptar el caso y comenzar con el diagnóstico y presupuesto, o recházalo si no puedes atenderlo.',
     [S.PENDING_DEPOSIT]: 'Esperando que el cliente registre el anticipo del 50 %.',
     [S.PICKUP_PENDING]: 'Esperando que el cliente programe la recolección.',
     [S.BUDGET_REJECTED]: 'El cliente rechazó el presupuesto. Puedes enviar uno nuevo.',
@@ -209,6 +210,8 @@ function techActions(row, { budget, logistica }) {
 
   return {
     transitions: techTransitions(row),
+    canConfirmFolio: e === S.PENDING_TECH || e === S.REGISTERED,
+    canRejectFolio: e === S.PENDING_TECH || e === S.REGISTERED || (e === S.TECH_ASSIGNED && (!budget || budget.estado === 'Rechazado')),
     canDiagnose: WORKSHOP_STATUSES.includes(e) || e === S.BUDGET_REJECTED,
     canBudget: BUDGET_STATUSES.includes(e) && (!budget || budget.estado === 'Rechazado'),
     canWork: WORKSHOP_STATUSES.includes(e) || e === S.READY,
@@ -261,6 +264,76 @@ export async function findAssignedRepair(rawFolio, user) {
 export async function getTechnicianDetail(user, folio) {
   const row = await findAssignedRepair(folio, user)
   return buildDetail(row, user, { asTechnician: true })
+}
+
+/**
+ * Permite al técnico especializado confirmar (aceptar) o rechazar un folio asignado.
+ * - Si confirma (accept === true): pasa a "Técnico asignado" y notifica al cliente.
+ * - Si rechaza (accept === false): pasa a "Folio rechazado", libera el folio y notifica al cliente.
+ */
+export async function respondTechnicianAssignment(user, rawFolio, body) {
+  const row = await findAssignedRepair(rawFolio, user)
+  const accept = body.accept === true
+  const motivo = text(body.motivo, 300)
+  const techUser = await userModel.findById(user.id)
+  const techName = techUser ? `${techUser.nombre} ${techUser.apellidos}`.trim() : 'El técnico'
+
+  if (accept) {
+    if (![S.PENDING_TECH, S.REGISTERED].includes(row.estado)) {
+      throw AppError.conflict('Este folio ya fue confirmado.')
+    }
+    await withTransaction(async (conn) => {
+      await assertLockedStatus(row.id_solicitud, [S.PENDING_TECH, S.REGISTERED], conn)
+      await setStatus(
+        row.id_solicitud,
+        S.TECH_ASSIGNED,
+        `${techName} confirmó el folio y aceptó atender la solicitud.`,
+        { id_tecnico: user.id, requiere_tecnico: 1 },
+        conn,
+      )
+    })
+
+    await afterChange(row.id_solicitud, [
+      {
+        userId: row.id_usuario,
+        tipo: 'estado',
+        email: true,
+        titulo: 'Técnico confirmó tu folio',
+        mensaje: `${techName} confirmó tu solicitud ${row.folio} (${row.dispositivo_marca} ${row.dispositivo_modelo}). Ya puedes comunicarte por chat.`,
+      },
+    ])
+    return getTechnicianDetail(user, row.folio)
+  }
+
+  const currentBudget = await budgetModel.findByRepair(row.id_solicitud)
+  if (
+    ![S.PENDING_TECH, S.REGISTERED, S.TECH_ASSIGNED].includes(row.estado) ||
+    (currentBudget && currentBudget.estado === 'Aceptado')
+  ) {
+    throw AppError.conflict('Ya no es posible rechazar este folio porque el proceso de reparación ya inició.')
+  }
+
+  await withTransaction(async (conn) => {
+    await assertLockedStatus(row.id_solicitud, [S.PENDING_TECH, S.REGISTERED, S.TECH_ASSIGNED], conn)
+    await setStatus(
+      row.id_solicitud,
+      S.FOLIO_REJECTED,
+      `${techName} rechazó el folio.${motivo ? ` Motivo: ${motivo}` : ''}`,
+      { id_tecnico: null },
+      conn,
+    )
+  })
+
+  await afterChange(row.id_solicitud, [
+    {
+      userId: row.id_usuario,
+      tipo: 'estado',
+      email: true,
+      titulo: 'Folio rechazado por el técnico',
+      mensaje: `${techName} rechazó la solicitud ${row.folio} (${row.dispositivo_marca} ${row.dispositivo_modelo}).${motivo ? ` Motivo: ${motivo}` : ''}`,
+    },
+  ])
+  return { rejected: true, folio: row.folio }
 }
 
 export async function saveTechnicalDiagnosis(user, folio, body) {

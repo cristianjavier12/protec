@@ -52,6 +52,8 @@ function awaitingResolution(row, diagnosis) {
   )
 }
 
+const CAN_DIAGNOSE_STATUSES = [REPAIR_STATUS.REGISTERED, REPAIR_STATUS.PENDING_TECH]
+
 export const diagnosisService = {
   async getSession(user, folio) {
     const row = await findAuthorizedRepair(folio, user)
@@ -60,7 +62,7 @@ export const diagnosisService = {
     return {
       repair: repairInfo(row),
       diagnostico: diagnosis,
-      canStart: isOwner && row.estado === REPAIR_STATUS.REGISTERED,
+      canStart: isOwner && !diagnosis && CAN_DIAGNOSE_STATUSES.includes(row.estado),
       awaitingResolution: isOwner && awaitingResolution(row, diagnosis),
     }
   },
@@ -72,7 +74,7 @@ export const diagnosisService = {
   async answer(user, folio, answers) {
     const row = await findAuthorizedRepair(folio, user)
     ensureOwner(user, row)
-    if (row.estado !== REPAIR_STATUS.REGISTERED) {
+    if (!CAN_DIAGNOSE_STATUSES.includes(row.estado)) {
       throw AppError.conflict('Esta solicitud ya cuenta con un diagnóstico preliminar.')
     }
 
@@ -84,7 +86,7 @@ export const diagnosisService = {
 
     await withTransaction(async (conn) => {
       const estadoActual = await lockStatus(conn, row.id_solicitud)
-      if (estadoActual !== REPAIR_STATUS.REGISTERED) {
+      if (!CAN_DIAGNOSE_STATUSES.includes(estadoActual)) {
         throw AppError.conflict('Esta solicitud ya cuenta con un diagnóstico preliminar.')
       }
 
@@ -116,11 +118,11 @@ export const diagnosisService = {
         `Diagnóstico preliminar del asistente: ${result.problem}`,
         conn,
       )
-      if (result.requiresTechnician) {
+      if (result.requiresTechnician && estadoActual === REPAIR_STATUS.REGISTERED) {
         await statusHistoryModel.add(
           row.id_solicitud,
           REPAIR_STATUS.PENDING_TECH,
-          'El caso requiere revisión de un técnico. En espera de asignación.',
+          'El caso requiere revisión de un técnico. En espera de confirmación.',
           conn,
         )
       }

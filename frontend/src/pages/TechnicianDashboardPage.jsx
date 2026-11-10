@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CheckCircle2, ClipboardList, Eye, MessageSquare, RefreshCw, Search, Star, Stethoscope, ToggleLeft, ToggleRight, Wrench } from 'lucide-react'
+import { Check, CheckCircle2, ClipboardList, Eye, MessageSquare, RefreshCw, Search, Star, Stethoscope, ToggleLeft, ToggleRight, Wrench, XCircle } from 'lucide-react'
 import { Container } from '../components/ui/Container'
+import Button from '../components/ui/Button'
 import DashboardStatCard from '../components/workflow/DashboardStatCard'
 import StatusBadge from '../components/workflow/StatusBadge'
-import { EmptyState, ErrorState, SkeletonList } from '../components/workflow/Feedback'
+import { Modal } from '../components/workflow/ConfirmDialog'
+import { EmptyState, ErrorState, Field, SkeletonList, inputClass } from '../components/workflow/Feedback'
 import { ProgressBar } from '../components/tracking/TrackingElements'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationsContext'
@@ -38,6 +40,10 @@ export default function TechnicianDashboardPage() {
   const [data, setData] = useState(null)
   const [state, setState] = useState('loading')
   const [toggling, setToggling] = useState(false)
+  const [busyFolio, setBusyFolio] = useState(null)
+  const [rejectTarget, setRejectTarget] = useState(null)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejecting, setRejecting] = useState(false)
   const jobsRef = useRef(null)
 
   // Búsqueda con pequeña espera para no consultar en cada tecla.
@@ -82,6 +88,39 @@ export default function TechnicianDashboardPage() {
       notify({ type: 'warning', title: 'No se pudo actualizar', description: err?.message })
     } finally {
       setToggling(false)
+    }
+  }
+
+  const confirmFolio = async (folio) => {
+    setBusyFolio(folio)
+    try {
+      const res = await technicianService.respondFolio(folio, { accept: true })
+      notify({ type: 'success', title: 'Folio confirmado', description: res.message })
+      await load(true)
+    } catch (err) {
+      notify({ type: 'warning', title: 'No se pudo confirmar', description: err?.message })
+    } finally {
+      setBusyFolio(null)
+    }
+  }
+
+  const handleRejectFolio = async (e) => {
+    e.preventDefault()
+    if (!rejectTarget) return
+    setRejecting(true)
+    try {
+      const res = await technicianService.respondFolio(rejectTarget.folio, {
+        accept: false,
+        motivo: rejectReason.trim() || undefined,
+      })
+      notify({ type: 'success', title: 'Folio rechazado', description: res.message })
+      setRejectTarget(null)
+      setRejectReason('')
+      await load(true)
+    } catch (err) {
+      notify({ type: 'warning', title: 'No se pudo rechazar', description: err?.message })
+    } finally {
+      setRejecting(false)
     }
   }
 
@@ -211,22 +250,55 @@ export default function TechnicianDashboardPage() {
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2 lg:flex-col lg:items-stretch xl:flex-row">
-                          <Link to={techRepairDetailPath(r.folio)} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-electric px-4 text-sm font-semibold text-white shadow-glow transition hover:bg-electric-600">
-                            <Eye className="size-4" aria-hidden /> Ver detalles
-                          </Link>
-                          <Link
-                            to={techRepairDetailPath(r.folio, 'estado')}
-                            className={cn(
-                              'inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-electric/40 hover:text-electric',
-                              !r.transiciones?.length && 'opacity-60',
-                            )}
-                            title={r.transiciones?.length ? `Siguiente: ${r.transiciones.join(' / ')}` : 'Sin cambios manuales en este estado'}
-                          >
-                            <RefreshCw className="size-4" aria-hidden /> Actualizar estado
-                          </Link>
-                          <Link to={techRepairDetailPath(r.folio, 'chat')} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-electric/40 hover:text-electric">
-                            <MessageSquare className="size-4" aria-hidden /> Abrir chat
-                          </Link>
+                          {r.pendienteConfirmacion ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={busyFolio === r.folio}
+                                onClick={() => confirmFolio(r.folio)}
+                                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                              >
+                                <Check className="size-4" aria-hidden />
+                                {busyFolio === r.folio ? 'Confirmando...' : 'Confirmar folio'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busyFolio === r.folio}
+                                onClick={() => {
+                                  setRejectTarget(r)
+                                  setRejectReason('')
+                                }}
+                                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+                              >
+                                <XCircle className="size-4" aria-hidden /> Rechazar folio
+                              </button>
+                              <Link
+                                to={techRepairDetailPath(r.folio)}
+                                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-electric/40 hover:text-electric"
+                              >
+                                <Eye className="size-4" aria-hidden /> Ver detalles
+                              </Link>
+                            </>
+                          ) : (
+                            <>
+                              <Link to={techRepairDetailPath(r.folio)} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-electric px-4 text-sm font-semibold text-white shadow-glow transition hover:bg-electric-600">
+                                <Eye className="size-4" aria-hidden /> Ver detalles
+                              </Link>
+                              <Link
+                                to={techRepairDetailPath(r.folio, 'estado')}
+                                className={cn(
+                                  'inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-electric/40 hover:text-electric',
+                                  !r.transiciones?.length && 'opacity-60',
+                                )}
+                                title={r.transiciones?.length ? `Siguiente: ${r.transiciones.join(' / ')}` : 'Sin cambios manuales en este estado'}
+                              >
+                                <RefreshCw className="size-4" aria-hidden /> Actualizar estado
+                              </Link>
+                              <Link to={techRepairDetailPath(r.folio, 'chat')} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-electric/40 hover:text-electric">
+                                <MessageSquare className="size-4" aria-hidden /> Abrir chat
+                              </Link>
+                            </>
+                          )}
                         </div>
                       </div>
                     </li>
@@ -236,6 +308,36 @@ export default function TechnicianDashboardPage() {
             )}
           </div>
         </div>
+
+        <Modal
+          open={Boolean(rejectTarget)}
+          onClose={rejecting ? undefined : () => setRejectTarget(null)}
+          title="Rechazar folio"
+          description={rejectTarget ? `${rejectTarget.folio} · ${rejectTarget.dispositivo.marca} ${rejectTarget.dispositivo.modelo}` : ''}
+        >
+          <form onSubmit={handleRejectFolio} className="flex flex-col gap-4">
+            <p className="text-sm text-muted">
+              ¿Deseas rechazar este folio? El cliente recibirá una notificación con el cambio de estado.
+            </p>
+            <Field label="Motivo del rechazo (opcional)">
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value.slice(0, 300))}
+                placeholder="Ej.: Actualmente no contamos con la refacción para este modelo..."
+                className={inputClass}
+              />
+            </Field>
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="secondary" onClick={() => setRejectTarget(null)} disabled={rejecting}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={rejecting} leadingIcon={XCircle} className="bg-red-600 text-white shadow-none hover:bg-red-700">
+                Confirmar rechazo
+              </Button>
+            </div>
+          </form>
+        </Modal>
       </Container>
     </section>
   )

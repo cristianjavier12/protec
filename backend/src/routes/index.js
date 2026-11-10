@@ -85,6 +85,7 @@ router.get('/search/folio/:folio', authenticateToken, h(flow.searchFolio))
 /* ========== PANEL DEL TÉCNICO ========== */
 router.get('/technician/dashboard', authenticateToken, authorizeRoles('tecnico'), h(tech.getDashboard))
 router.get('/technician/repairs/:folio', authenticateToken, authorizeRoles('tecnico'), h(tech.getRepairDetail))
+router.post('/technician/repairs/:folio/respond', authenticateToken, authorizeRoles('tecnico'), h(tech.respondFolio))
 router.post('/technician/repairs/:folio/diagnosis', authenticateToken, authorizeRoles('tecnico'), h(tech.saveDiagnosis))
 router.post('/technician/repairs/:folio/budget', authenticateToken, authorizeRoles('tecnico'), h(tech.createBudget))
 router.patch('/technician/repairs/:folio/status', authenticateToken, authorizeRoles('tecnico'), h(tech.updateStatus))

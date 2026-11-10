@@ -34,6 +34,7 @@ const STATUS_TONE = {
   'Diagnóstico inicial': 'blue',
   'Pendiente de técnico': 'yellow',
   'Técnico asignado': 'indigo',
+  'Folio rechazado': 'red',
   'Pendiente de anticipo': 'yellow',
   'Presupuesto rechazado': 'red',
   'Listo para recibir dispositivo': 'yellow',
